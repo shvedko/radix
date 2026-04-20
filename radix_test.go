@@ -1,7 +1,8 @@
-package radix
+package radix_test
 
 import (
 	"fmt"
+	"radix"
 	"strconv"
 	"strings"
 )
@@ -43,8 +44,8 @@ func newDumper[T any]() func(key []byte, prefix []byte, level int, end bool, val
 	}
 }
 
-func ExampleTree_Dump() {
-	t := New[int]()
+func ExampleRadix_Dump() {
+	t := radix.New[int]()
 
 	t.Insert(1, false, []byte("Pavlov"), []byte("Ivan"))
 	t.Insert(2, false, []byte("Pavlov"), []byte("Igor"))
@@ -79,8 +80,8 @@ func ExampleTree_Dump() {
 	//
 }
 
-func ExampleTree_Dump_city_street() {
-	t := New[int]()
+func ExampleRadix_Dump_city_street() {
+	t := radix.New[int]()
 
 	for i := 0; i < 100; i++ {
 		s := strconv.Itoa(i)

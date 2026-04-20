@@ -1,13 +1,13 @@
 package radix
 
-type node[T any] struct {
+type Radix[T any] struct {
 	prefix   []byte
-	children [256]*node[T]
-	next     *node[T]
+	children [256]*Radix[T]
+	next     *Radix[T]
 	values   []T
 }
 
-func (n *node[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
+func (n *Radix[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
 	if len(bytes) == 0 {
 		return true, 0, true
 	}
@@ -33,14 +33,14 @@ func (n *node[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
 	return true, i, false
 }
 
-func (n *node[T]) insert(bytes []byte) *node[T] {
+func (n *Radix[T]) insert(bytes []byte) *Radix[T] {
 	p := n
 	for len(bytes) > 0 {
 		first := bytes[0]
 
 		c := p.children[first]
 		if c == nil {
-			next := &node[T]{prefix: bytes}
+			next := &Radix[T]{prefix: bytes}
 			p.children[first] = next
 			return next
 		}
@@ -58,7 +58,7 @@ func (n *node[T]) insert(bytes []byte) *node[T] {
 	return p
 }
 
-func (n *node[T]) commonPrefix(bytes []byte) int {
+func (n *Radix[T]) commonPrefix(bytes []byte) int {
 	i := 0
 	for i < len(bytes) && i < len(n.prefix) && bytes[i] == n.prefix[i] {
 		i++
@@ -66,8 +66,8 @@ func (n *node[T]) commonPrefix(bytes []byte) int {
 	return i
 }
 
-func (n *node[T]) split(size int) {
-	child := &node[T]{
+func (n *Radix[T]) split(size int) {
+	child := &Radix[T]{
 		prefix:   n.prefix[size:],
 		children: n.children,
 		next:     n.next,
@@ -75,24 +75,24 @@ func (n *node[T]) split(size int) {
 	}
 
 	n.prefix = n.prefix[:size]
-	n.children = [256]*node[T]{}
+	n.children = [256]*Radix[T]{}
 	n.children[child.prefix[0]] = child
 	n.values = nil
 	n.next = nil
 }
 
-func (n *node[T]) split2(size int) *node[T] {
-	child := &node[T]{
+func (n *Radix[T]) split2(size int) *Radix[T] {
+	child := &Radix[T]{
 		prefix:   n.prefix[size:],
 		children: n.children,
 		next:     n.next,
 		values:   n.values,
 	}
 
-	var children [256]*node[T]
+	var children [256]*Radix[T]
 	children[child.prefix[0]] = child
 
-	return &node[T]{
+	return &Radix[T]{
 		prefix:   n.prefix[:size],
 		children: children,
 		values:   nil,
@@ -100,25 +100,21 @@ func (n *node[T]) split2(size int) *node[T] {
 	}
 }
 
-type Tree[T any] struct {
-	root *node[T]
-}
+func New[T any]() *Radix[T] { return &Radix[T]{} }
 
-func New[T any]() *Tree[T] { return &Tree[T]{root: &node[T]{}} }
-
-func (t *Tree[T]) Insert(item T, unique bool, fields ...[]byte) bool {
+func (n *Radix[T]) Insert(item T, unique bool, fields ...[]byte) bool {
 	if len(fields) == 0 {
 		return false
 	}
 
-	p := t.root
+	p := n
 
 	for i, field := range fields {
 		p = p.insert(field)
 
 		if i < len(fields)-1 {
 			if p.next == nil {
-				p.next = &node[T]{}
+				p.next = &Radix[T]{}
 			}
 			p = p.next
 		}
@@ -132,11 +128,11 @@ func (t *Tree[T]) Insert(item T, unique bool, fields ...[]byte) bool {
 	return true
 }
 
-func (t *Tree[T]) Dump(f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
-	t.root.dump(nil, 0, true, f)
+func (n *Radix[T]) Dump(f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
+	n.dump(nil, 0, true, f)
 }
 
-func (n *node[T]) dump(key []byte, level int, end bool, f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
+func (n *Radix[T]) dump(key []byte, level int, end bool, f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
 	if n == nil {
 		return
 	}
