@@ -1,0 +1,167 @@
+package radix
+
+type node[T any] struct {
+	prefix   []byte
+	children [256]*node[T]
+	next     *node[T]
+	values   []T
+}
+
+func (n *node[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
+	if len(bytes) == 0 {
+		return true, 0, true
+	}
+
+	if offset >= len(bytes) {
+		// Мы уже нашли всё слово в родителях, этот узел — часть "хвоста" за пределами поиска
+		return true, 0, true
+	}
+	prefix := bytes[offset:]
+
+	i := 0
+	for i < len(n.prefix) && i < len(prefix) {
+		if n.prefix[i] != prefix[i] {
+			return false, 0, false // Символы разошлись — узел не подходит
+		}
+		i++
+	}
+
+	if i == len(prefix) {
+		return true, i, true
+	}
+
+	return true, i, false
+}
+
+func (n *node[T]) insert(bytes []byte) *node[T] {
+	p := n
+	for len(bytes) > 0 {
+		first := bytes[0]
+
+		c := p.children[first]
+		if c == nil {
+			next := &node[T]{prefix: bytes}
+			p.children[first] = next
+			return next
+		}
+
+		size := c.commonPrefix(bytes)
+		if size < len(c.prefix) {
+			//c.split(size)
+			c = c.split2(size)
+			p.children[first] = c
+		}
+
+		bytes = bytes[size:]
+		p = c
+	}
+	return p
+}
+
+func (n *node[T]) commonPrefix(bytes []byte) int {
+	i := 0
+	for i < len(bytes) && i < len(n.prefix) && bytes[i] == n.prefix[i] {
+		i++
+	}
+	return i
+}
+
+func (n *node[T]) split(size int) {
+	child := &node[T]{
+		prefix:   n.prefix[size:],
+		children: n.children,
+		next:     n.next,
+		values:   n.values,
+	}
+
+	n.prefix = n.prefix[:size]
+	n.children = [256]*node[T]{}
+	n.children[child.prefix[0]] = child
+	n.values = nil
+	n.next = nil
+}
+
+func (n *node[T]) split2(size int) *node[T] {
+	child := &node[T]{
+		prefix:   n.prefix[size:],
+		children: n.children,
+		next:     n.next,
+		values:   n.values,
+	}
+
+	var children [256]*node[T]
+	children[child.prefix[0]] = child
+
+	return &node[T]{
+		prefix:   n.prefix[:size],
+		children: children,
+		values:   nil,
+		next:     nil,
+	}
+}
+
+type Tree[T any] struct {
+	root *node[T]
+}
+
+func New[T any]() *Tree[T] { return &Tree[T]{root: &node[T]{}} }
+
+func (t *Tree[T]) Insert(item T, unique bool, fields ...[]byte) bool {
+	if len(fields) == 0 {
+		return false
+	}
+
+	p := t.root
+
+	for i, field := range fields {
+		p = p.insert(field)
+
+		if i < len(fields)-1 {
+			if p.next == nil {
+				p.next = &node[T]{}
+			}
+			p = p.next
+		}
+	}
+
+	if unique && len(p.values) > 0 {
+		return false // Ключ уже занят
+	}
+
+	p.values = append(p.values, item)
+	return true
+}
+
+func (t *Tree[T]) Dump(f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
+	t.root.dump(nil, 0, true, f)
+}
+
+func (n *node[T]) dump(key []byte, level int, end bool, f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
+	if n == nil {
+		return
+	}
+
+	f(key, n.prefix, level, end, n.values)
+
+	j := len(n.children)
+	for j > 0 {
+		j--
+		if n.children[j] != nil {
+			break
+		}
+	}
+
+	for i := 0; i < j; i++ {
+		if n.children[i] != nil {
+			n.children[i].dump([]byte{byte(i)}, level+1, false, f)
+		}
+	}
+
+	if n.children[j] != nil {
+		n.children[j].dump([]byte{byte(j)}, level+1, n.next == nil, f)
+	}
+
+	if n.next != nil {
+		n.next.dump(nil, level+1, true, f)
+	}
+}
