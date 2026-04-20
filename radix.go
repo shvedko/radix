@@ -7,21 +7,22 @@ type Radix[T any] struct {
 	values   []T
 }
 
-func (n *Radix[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
-	if len(bytes) == 0 {
+func New[T any]() *Radix[T] { return &Radix[T]{} }
+
+func (n *Radix[T]) matchPrefix(prefix []byte, offset int) (bool, int, bool) {
+	if len(prefix) == 0 {
 		return true, 0, true
 	}
 
-	if offset >= len(bytes) {
-		// Мы уже нашли всё слово в родителях, этот узел — часть "хвоста" за пределами поиска
+	if offset >= len(prefix) {
 		return true, 0, true
 	}
-	prefix := bytes[offset:]
+	prefix = prefix[offset:]
 
 	i := 0
 	for i < len(n.prefix) && i < len(prefix) {
 		if n.prefix[i] != prefix[i] {
-			return false, 0, false // Символы разошлись — узел не подходит
+			return false, 0, false
 		}
 		i++
 	}
@@ -33,76 +34,52 @@ func (n *Radix[T]) matchPrefix(bytes []byte, offset int) (bool, int, bool) {
 	return true, i, false
 }
 
-func (n *Radix[T]) insert(bytes []byte) *Radix[T] {
+func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
 	p := n
-	for len(bytes) > 0 {
-		first := bytes[0]
+	for len(prefix) > 0 {
+		b := prefix[0]
 
-		c := p.children[first]
+		c := p.children[b]
 		if c == nil {
-			next := &Radix[T]{prefix: bytes}
-			p.children[first] = next
-			return next
+			c = &Radix[T]{prefix: prefix}
+			p.children[b] = c
+			return c
 		}
 
-		size := c.commonPrefix(bytes)
+		size := c.commonPrefix(prefix)
 		if size < len(c.prefix) {
-			//c.split(size)
-			c = c.split2(size)
-			p.children[first] = c
+			c.split(size)
 		}
 
-		bytes = bytes[size:]
+		prefix = prefix[size:]
 		p = c
 	}
 	return p
 }
 
-func (n *Radix[T]) commonPrefix(bytes []byte) int {
+func (n *Radix[T]) commonPrefix(prefix []byte) int {
 	i := 0
-	for i < len(bytes) && i < len(n.prefix) && bytes[i] == n.prefix[i] {
+	for i < len(prefix) && i < len(n.prefix) && prefix[i] == n.prefix[i] {
 		i++
 	}
 	return i
 }
 
 func (n *Radix[T]) split(size int) {
-	child := &Radix[T]{
+	c := &Radix[T]{
 		prefix:   n.prefix[size:],
 		children: n.children,
 		next:     n.next,
 		values:   n.values,
 	}
-
-	n.prefix = n.prefix[:size]
 	n.children = [256]*Radix[T]{}
-	n.children[child.prefix[0]] = child
+	n.children[c.prefix[0]] = c
+	n.prefix = n.prefix[:size]
 	n.values = nil
 	n.next = nil
 }
 
-func (n *Radix[T]) split2(size int) *Radix[T] {
-	child := &Radix[T]{
-		prefix:   n.prefix[size:],
-		children: n.children,
-		next:     n.next,
-		values:   n.values,
-	}
-
-	var children [256]*Radix[T]
-	children[child.prefix[0]] = child
-
-	return &Radix[T]{
-		prefix:   n.prefix[:size],
-		children: children,
-		values:   nil,
-		next:     nil,
-	}
-}
-
-func New[T any]() *Radix[T] { return &Radix[T]{} }
-
-func (n *Radix[T]) Insert(item T, unique bool, fields ...[]byte) bool {
+func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
 	if len(fields) == 0 {
 		return false
 	}
@@ -121,23 +98,25 @@ func (n *Radix[T]) Insert(item T, unique bool, fields ...[]byte) bool {
 	}
 
 	if unique && len(p.values) > 0 {
-		return false // Ключ уже занят
+		return false
 	}
 
-	p.values = append(p.values, item)
+	p.values = append(p.values, value)
 	return true
 }
 
-func (n *Radix[T]) Dump(f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
-	n.dump(nil, 0, true, f)
+type dumper[T any] func(key []byte, prefix []byte, level int, end bool, values []T) bool
+
+func (n *Radix[T]) Dump(yield dumper[T]) {
+	n.dump(nil, 0, true, yield)
 }
 
-func (n *Radix[T]) dump(key []byte, level int, end bool, f func(key []byte, prefix []byte, level int, end bool, values []T) bool) {
+func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) {
 	if n == nil {
 		return
 	}
 
-	f(key, n.prefix, level, end, n.values)
+	yield(key, n.prefix, level, end, n.values)
 
 	j := len(n.children)
 	for j > 0 {
@@ -148,16 +127,10 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, f func(key []byte, pref
 	}
 
 	for i := 0; i < j; i++ {
-		if n.children[i] != nil {
-			n.children[i].dump([]byte{byte(i)}, level+1, false, f)
-		}
+		n.children[i].dump([]byte{byte(i)}, level+1, false, yield)
 	}
 
-	if n.children[j] != nil {
-		n.children[j].dump([]byte{byte(j)}, level+1, n.next == nil, f)
-	}
+	n.children[j].dump([]byte{byte(j)}, level+1, n.next == nil, yield)
 
-	if n.next != nil {
-		n.next.dump(nil, level+1, true, f)
-	}
+	n.next.dump(nil, level+1, true, yield)
 }
