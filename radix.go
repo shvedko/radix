@@ -118,6 +118,8 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) {
 
 	yield(key, n.prefix, level, end, n.values)
 
+	level++
+
 	j := len(n.children)
 	for j > 0 {
 		j--
@@ -127,10 +129,66 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) {
 	}
 
 	for i := 0; i < j; i++ {
-		n.children[i].dump([]byte{byte(i)}, level+1, false, yield)
+		n.children[i].dump([]byte{byte(i)}, level, false, yield)
 	}
 
-	n.children[j].dump([]byte{byte(j)}, level+1, n.next == nil, yield)
+	n.children[j].dump([]byte{byte(j)}, level, n.next == nil, yield)
 
-	n.next.dump(nil, level+1, true, yield)
+	n.next.dump(nil, level, true, yield)
+}
+
+func (n *Radix[T]) Walk(yield dumper[T]) {
+	n.walk(yield)
+}
+
+func (n *Radix[T]) walk(yield dumper[T]) {
+	if n == nil {
+		return
+	}
+
+	type frame struct {
+		n     *Radix[T]
+		level int
+		end   bool
+		key   [1]byte
+		one   uint8
+	}
+
+	var (
+		p frame
+		q = []frame{{n: n, end: true}}
+	)
+
+	for len(q) > 0 {
+		p, q = q[len(q)-1], q[:len(q)-1]
+
+		yield(p.key[:p.one], p.n.prefix, p.level, p.end, p.n.values)
+
+		p.end = true
+		p.level++
+
+		if p.n.next != nil {
+			q = append(q, frame{
+				n:     p.n.next,
+				level: p.level,
+				end:   true,
+			})
+			p.end = false
+		}
+
+		j := len(p.n.children)
+		for j > 0 {
+			j--
+			if p.n.children[j] != nil {
+				q = append(q, frame{
+					n:     p.n.children[j],
+					level: p.level,
+					end:   p.end,
+					key:   [1]byte{byte(j)},
+					one:   1,
+				})
+				p.end = false
+			}
+		}
+	}
 }

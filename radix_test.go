@@ -54,7 +54,9 @@ func ExampleRadix_Dump() {
 	t.Insert(5, false, []byte("Vanina"), []byte("Zina"))
 	t.Insert(6, true, []byte("Vanina"), []byte("Zina"))
 	t.Insert(7, false, []byte("Pavlov"), []byte("Oleg"))
-	t.Insert(8, false, []byte("Pavlova"), []byte("Nina"))
+	t.Insert(8, false, []byte("Pavlova"), []byte("Zinaida"))
+	t.Insert(9, false, []byte("Pushkin"), []byte("Alexander"))
+	t.Insert(0, false, []byte("Petras"), []byte("Alex"))
 
 	t.Dump(newDumper[int]())
 
@@ -65,22 +67,29 @@ func ExampleRadix_Dump() {
 	//    │  ├──[a]:"avlov"
 	//    │  │  ├──[a]:"a"
 	//    │  │  │  └─»┐
-	//    │  │  │     └──[N]:"Nina" = [8]
+	//    │  │  │     └──[Z]:"Zinaida" = [8]
 	//    │  │  └─»┐
 	//    │  │     ├──[I]:"I"
 	//    │  │     │  ├──[g]:"gor" = [2]
 	//    │  │     │  └──[v]:"van" = [1]
 	//    │  │     └──[O]:"Oleg" = [7]
-	//    │  └──[e]:"etrov"
+	//    │  ├──[e]:"etr"
+	//    │  │  ├──[a]:"as"
+	//    │  │  │  └─»┐
+	//    │  │  │     └──[A]:"Alex" = [0]
+	//    │  │  └──[o]:"ov"
+	//    │  │     └─»┐
+	//    │  │        └──[I]:"Ivan" = [3]
+	//    │  └──[u]:"ushkin"
 	//    │     └─»┐
-	//    │        └──[I]:"Ivan" = [3]
+	//    │        └──[A]:"Alexander" = [9]
 	//    └──[V]:"Vanina"
 	//       └─»┐
 	//          └──[Z]:"Zina" = [4 5]
 	//
 }
 
-func ExampleRadix_Dump_city_street() {
+func ExampleRadix_Walk() {
 	t := radix.New[int]()
 
 	for i := 0; i < 100; i++ {
@@ -89,7 +98,7 @@ func ExampleRadix_Dump_city_street() {
 		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
 	}
 
-	t.Dump(newDumper[int]())
+	t.Walk(newDumper[int]())
 
 	// Output:
 	// ┬
