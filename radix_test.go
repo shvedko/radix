@@ -5,6 +5,7 @@ import (
 	"radix"
 	"strconv"
 	"strings"
+	"testing"
 )
 
 func newDumper[T any]() func(key []byte, prefix []byte, level int, end bool, values []T) bool {
@@ -245,4 +246,32 @@ func ExampleRadix_Walk() {
 	//                ├──[8]:"87" = [87]
 	//                └──[9]:"95" = [95]
 	//
+}
+
+func BenchmarkRadix_Yield(b *testing.B) {
+	t := radix.New[int]()
+
+	for i := 0; i < 100; i++ {
+		s := strconv.Itoa(i)
+		c := strconv.Itoa(i % 8)
+		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
+	}
+
+	d := func([]byte, []byte, int, bool, []int) bool { return true }
+
+	b.ResetTimer()
+
+	b.Run("Dump", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			t.Dump(d)
+		}
+	})
+
+	b.Run("Walk", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			t.Walk(d)
+		}
+	})
 }

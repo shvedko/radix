@@ -2,6 +2,7 @@ package radix
 
 type Radix[T any] struct {
 	prefix   []byte
+	bits     [4]uint64
 	children [256]*Radix[T]
 	next     *Radix[T]
 	values   []T
@@ -107,17 +108,21 @@ func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
 
 type dumper[T any] func(key []byte, prefix []byte, level int, end bool, values []T) bool
 
-func (n *Radix[T]) Dump(yield dumper[T]) {
-	n.dump(nil, 0, true, yield)
+func (n *Radix[T]) Dump(yield dumper[T]) bool {
+	var buf [1]byte
+	return n.dump(buf[:0], 0, true, yield)
 }
 
-func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) {
+func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
 	if n == nil {
-		return
+		return true
 	}
 
-	yield(key, n.prefix, level, end, n.values)
+	if !yield(key, n.prefix, level, end, n.values) {
+		return false
+	}
 
+	key = key[:1]
 	level++
 
 	j := len(n.children)
@@ -129,21 +134,27 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) {
 	}
 
 	for i := 0; i < j; i++ {
-		n.children[i].dump([]byte{byte(i)}, level, false, yield)
+		key[0] = byte(i)
+		if !n.children[i].dump(key, level, false, yield) {
+			return false
+		}
 	}
 
-	n.children[j].dump([]byte{byte(j)}, level, n.next == nil, yield)
+	key[0] = byte(j)
+	if !n.children[j].dump(key, level, n.next == nil, yield) {
+		return false
+	}
 
-	n.next.dump(nil, level, true, yield)
+	return n.next.dump(key[:0], level, true, yield)
 }
 
-func (n *Radix[T]) Walk(yield dumper[T]) {
-	n.walk(yield)
+func (n *Radix[T]) Walk(yield dumper[T]) bool {
+	return n.walk(yield)
 }
 
-func (n *Radix[T]) walk(yield dumper[T]) {
+func (n *Radix[T]) walk(yield dumper[T]) bool {
 	if n == nil {
-		return
+		return true
 	}
 
 	type frame struct {
@@ -162,7 +173,9 @@ func (n *Radix[T]) walk(yield dumper[T]) {
 	for len(q) > 0 {
 		p, q = q[len(q)-1], q[:len(q)-1]
 
-		yield(p.key[:p.one], p.n.prefix, p.level, p.end, p.n.values)
+		if !yield(p.key[:p.one], p.n.prefix, p.level, p.end, p.n.values) {
+			return false
+		}
 
 		p.end = true
 		p.level++
@@ -191,4 +204,6 @@ func (n *Radix[T]) walk(yield dumper[T]) {
 			}
 		}
 	}
+
+	return true
 }
