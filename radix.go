@@ -4,17 +4,9 @@ import "math/bits"
 
 type bits256 [4]uint64
 
-func (b *bits256) has(i uint8) bool {
-	return b[i>>6]&(1<<(i&63)) != 0
-}
-
-func (b *bits256) set(i uint8) {
-	b[i>>6] |= 1 << (i & 63)
-}
-
-func (b *bits256) pop(i uint8) {
-	b[i>>6] &^= 1 << (i & 63)
-}
+func (b *bits256) has(i uint8) bool { return b[i>>6]&(1<<(i&63)) != 0 }
+func (b *bits256) set(i uint8)      { b[i>>6] |= 1 << (i & 63) }
+func (b *bits256) pop(i uint8)      { b[i>>6] &^= 1 << (i & 63) }
 
 type Radix[T any] struct {
 	prefix   []byte
