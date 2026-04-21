@@ -248,7 +248,7 @@ func ExampleRadix_Walk() {
 	//
 }
 
-func BenchmarkRadix_Yield(b *testing.B) {
+func BenchmarkRadix_Yield_100(b *testing.B) {
 	t := radix.New[int]()
 
 	for i := 0; i < 100; i++ {

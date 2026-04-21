@@ -1,8 +1,24 @@
 package radix
 
+import "math/bits"
+
+type bits256 [4]uint64
+
+func (b *bits256) has(i uint8) bool {
+	return b[i>>6]&(1<<(i&63)) != 0
+}
+
+func (b *bits256) set(i uint8) {
+	b[i>>6] |= 1 << (i & 63)
+}
+
+func (b *bits256) pop(i uint8) {
+	b[i>>6] &^= 1 << (i & 63)
+}
+
 type Radix[T any] struct {
 	prefix   []byte
-	bits     [4]uint64
+	index    bits256
 	children [256]*Radix[T]
 	next     *Radix[T]
 	values   []T
@@ -44,6 +60,7 @@ func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
 		if c == nil {
 			c = &Radix[T]{prefix: prefix}
 			p.children[b] = c
+			p.index.set(b)
 			return c
 		}
 
@@ -70,11 +87,14 @@ func (n *Radix[T]) split(size int) {
 	c := &Radix[T]{
 		prefix:   n.prefix[size:],
 		children: n.children,
+		index:    n.index,
 		next:     n.next,
 		values:   n.values,
 	}
 	n.children = [256]*Radix[T]{}
 	n.children[c.prefix[0]] = c
+	n.index = bits256{}
+	n.index.set(c.prefix[0])
 	n.prefix = n.prefix[:size]
 	n.values = nil
 	n.next = nil
@@ -114,10 +134,6 @@ func (n *Radix[T]) Dump(yield dumper[T]) bool {
 }
 
 func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
-	if n == nil {
-		return true
-	}
-
 	if !yield(key, n.prefix, level, end, n.values) {
 		return false
 	}
@@ -125,27 +141,55 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
 	key = key[:1]
 	level++
 
-	j := len(n.children)
-	for j > 0 {
-		j--
-		if n.children[j] != nil {
+	var j, k int
+	var m uint64
+	var l bool
+	for k = 3; k >= 0; k-- {
+		m = n.index[k]
+		if m != 0 {
+			b := 63 - bits.LeadingZeros64(m)
+			j = b + k<<6
+			m &^= 1 << b
+			l = true
 			break
 		}
 	}
 
-	for i := 0; i < j; i++ {
+	for h := 0; h < k; h++ {
+		z := n.index[h]
+		for z != 0 {
+			b := bits.TrailingZeros64(z)
+			i := b + h<<6
+			z &^= 1 << b
+
+			key[0] = byte(i)
+			if !n.children[i].dump(key, level, false, yield) {
+				return false
+			}
+		}
+	}
+
+	for m != 0 {
+		b := bits.TrailingZeros64(m)
+		i := b + k<<6
+		m &^= 1 << b
+
 		key[0] = byte(i)
 		if !n.children[i].dump(key, level, false, yield) {
 			return false
 		}
 	}
 
-	key[0] = byte(j)
-	if !n.children[j].dump(key, level, n.next == nil, yield) {
-		return false
+	e := n.next == nil
+
+	if l {
+		key[0] = byte(j)
+		if !n.children[j].dump(key, level, e, yield) {
+			return false
+		}
 	}
 
-	return n.next.dump(key[:0], level, true, yield)
+	return e || n.next.dump(key[:0], level, true, yield)
 }
 
 func (n *Radix[T]) Walk(yield dumper[T]) bool {
@@ -153,10 +197,6 @@ func (n *Radix[T]) Walk(yield dumper[T]) bool {
 }
 
 func (n *Radix[T]) walk(yield dumper[T]) bool {
-	if n == nil {
-		return true
-	}
-
 	type frame struct {
 		n     *Radix[T]
 		level int
