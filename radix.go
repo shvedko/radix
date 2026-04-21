@@ -139,13 +139,13 @@ func (n *Radix[T]) dump(level int, end bool, yield dumper[T]) bool {
 
 	level++
 
-	var j, k int
+	var j, k, i, b int
 	var m uint64
 	var l bool
 	for k = 3; k >= 0; k-- {
 		m = n.index[k]
 		if m != 0 {
-			b := 63 - bits.LeadingZeros64(m)
+			b = 63 - bits.LeadingZeros64(m)
 			j = b + k<<6
 			m &^= 1 << b
 			l = true
@@ -156,8 +156,8 @@ func (n *Radix[T]) dump(level int, end bool, yield dumper[T]) bool {
 	for h := 0; h < k; h++ {
 		z := n.index[h]
 		for z != 0 {
-			b := bits.TrailingZeros64(z)
-			i := b + h<<6
+			b = bits.TrailingZeros64(z)
+			i = b + h<<6
 			z &^= 1 << b
 
 			if !n.children[i].dump(level, false, yield) {
@@ -167,8 +167,8 @@ func (n *Radix[T]) dump(level int, end bool, yield dumper[T]) bool {
 	}
 
 	for m != 0 {
-		b := bits.TrailingZeros64(m)
-		i := b + k<<6
+		b = bits.TrailingZeros64(m)
+		i = b + k<<6
 		m &^= 1 << b
 
 		if !n.children[i].dump(level, false, yield) {
@@ -224,9 +224,10 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 
 		for k := 3; k >= 0; k-- {
 			m := p.n.index[k]
+			var i, b int
 			for m != 0 {
-				b := 63 - bits.LeadingZeros64(m)
-				i := b + k<<6
+				b = 63 - bits.LeadingZeros64(m)
+				i = b + k<<6
 				m &^= 1 << b
 
 				q = append(q, frame{
