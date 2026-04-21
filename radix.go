@@ -109,8 +109,8 @@ func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
 type dumper[T any] func(key []byte, prefix []byte, level int, end bool, values []T) bool
 
 func (n *Radix[T]) Dump(yield dumper[T]) bool {
-	var buf [1]byte
-	return n.dump(buf[:0], 0, true, yield)
+	var key [1]byte
+	return n.dump(key[:0], 0, true, yield)
 }
 
 func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
@@ -167,7 +167,7 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 
 	var (
 		p frame
-		q = []frame{{n: n, end: true}}
+		q = append(make([]frame, 0, 32), frame{n: n, end: true})
 	)
 
 	for len(q) > 0 {
