@@ -126,19 +126,17 @@ func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
 	return true
 }
 
-type dumper[T any] func(key []byte, prefix []byte, level int, end bool, values []T) bool
+type dumper[T any] func(prefix []byte, level int, end bool, values []T) bool
 
 func (n *Radix[T]) Dump(yield dumper[T]) bool {
-	var key [1]byte
-	return n.dump(key[:0], 0, true, yield)
+	return n.dump(0, true, yield)
 }
 
-func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
-	if !yield(key, n.prefix, level, end, n.values) {
+func (n *Radix[T]) dump(level int, end bool, yield dumper[T]) bool {
+	if !yield(n.prefix, level, end, n.values) {
 		return false
 	}
 
-	key = key[:1]
 	level++
 
 	var j, k int
@@ -162,8 +160,7 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
 			i := b + h<<6
 			z &^= 1 << b
 
-			key[0] = byte(i)
-			if !n.children[i].dump(key, level, false, yield) {
+			if !n.children[i].dump(level, false, yield) {
 				return false
 			}
 		}
@@ -174,8 +171,7 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
 		i := b + k<<6
 		m &^= 1 << b
 
-		key[0] = byte(i)
-		if !n.children[i].dump(key, level, false, yield) {
+		if !n.children[i].dump(level, false, yield) {
 			return false
 		}
 	}
@@ -183,13 +179,12 @@ func (n *Radix[T]) dump(key []byte, level int, end bool, yield dumper[T]) bool {
 	e := n.next == nil
 
 	if l {
-		key[0] = byte(j)
-		if !n.children[j].dump(key, level, e, yield) {
+		if !n.children[j].dump(level, e, yield) {
 			return false
 		}
 	}
 
-	return e || n.next.dump(key[:0], level, true, yield)
+	return e || n.next.dump(level, true, yield)
 }
 
 func (n *Radix[T]) Walk(yield dumper[T]) bool {
@@ -201,8 +196,6 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 		n     *Radix[T]
 		level int
 		end   bool
-		key   [1]byte
-		one   uint8
 	}
 
 	var (
@@ -213,7 +206,7 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 	for len(q) > 0 {
 		p, q = q[len(q)-1], q[:len(q)-1]
 
-		if !yield(p.key[:p.one], p.n.prefix, p.level, p.end, p.n.values) {
+		if !yield(p.n.prefix, p.level, p.end, p.n.values) {
 			return false
 		}
 
@@ -224,21 +217,22 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 			q = append(q, frame{
 				n:     p.n.next,
 				level: p.level,
-				end:   true,
+				end:   p.end,
 			})
 			p.end = false
 		}
 
-		j := len(p.n.children)
-		for j > 0 {
-			j--
-			if p.n.children[j] != nil {
+		for k := 3; k >= 0; k-- {
+			m := p.n.index[k]
+			for m != 0 {
+				b := 63 - bits.LeadingZeros64(m)
+				i := b + k<<6
+				m &^= 1 << b
+
 				q = append(q, frame{
-					n:     p.n.children[j],
+					n:     p.n.children[i],
 					level: p.level,
 					end:   p.end,
-					key:   [1]byte{byte(j)},
-					one:   1,
 				})
 				p.end = false
 			}

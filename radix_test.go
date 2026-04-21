@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-func newDumper[T any]() func(key []byte, prefix []byte, level int, end bool, values []T) bool {
+func newDumper[T any]() func(prefix []byte, level int, end bool, values []T) bool {
 	m := make(map[int]uint8)
 	v := [2]rune{'│', ' '}
 	r := [2]rune{'├', '└'}
-	return func(key, prefix []byte, l int, e bool, values []T) bool {
+	return func(prefix []byte, l int, e bool, values []T) bool {
 		var u uint8
 		if e {
 			u = 1
@@ -28,9 +28,9 @@ func newDumper[T any]() func(key []byte, prefix []byte, level int, end bool, val
 		}
 		b.WriteRune(r[m[l]])
 		b.WriteRune('─')
-		if len(key) > 0 {
+		if len(prefix) > 0 {
 			b.WriteString("─[")
-			b.Write(key)
+			b.WriteByte(prefix[0])
 			b.WriteString("]:\"")
 			b.Write(prefix)
 			b.WriteByte('"')
@@ -248,7 +248,7 @@ func ExampleRadix_Walk() {
 	//
 }
 
-func BenchmarkRadix_Yield_100(b *testing.B) {
+func BenchmarkRadix_100(b *testing.B) {
 	t := radix.New[int]()
 
 	for i := 0; i < 100; i++ {
@@ -257,7 +257,7 @@ func BenchmarkRadix_Yield_100(b *testing.B) {
 		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
 	}
 
-	d := func([]byte, []byte, int, bool, []int) bool { return true }
+	d := func([]byte, int, bool, []int) bool { return true }
 
 	b.ResetTimer()
 
