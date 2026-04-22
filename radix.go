@@ -256,15 +256,20 @@ func (t *Iterator[T]) Next() bool {
 		}
 
 		matched, consumed, end := f.n.matchPrefix(prefix[f.offset:])
+
+		//println(matched, consumed, end, f.mode, f.layer, f.offset, f.c, f.n, string(f.n.prefix), f.n.values)
+
 		if matched {
 			f.offset += consumed
 			if end {
-				if len(prefix) == 0 || f.layer >= len(t.prefixes)-1 {
-					switch f.mode {
+				if len(prefix) == f.offset {
 
+					//println(string(prefix), f.offset)
+
+					switch f.mode {
 					case 0:
 						f.mode++
-						if len(f.n.values) > 0 {
+						if len(f.n.values) > 0 && f.layer >= len(t.prefixes)-1 {
 							return true
 						}
 						fallthrough
@@ -308,7 +313,7 @@ func (t *Iterator[T]) Next() bool {
 				}
 			}
 
-			if f.mode != 3 {
+			if f.mode != 3 && f.offset < len(prefix) {
 				f.mode = 3
 				c := prefix[f.offset]
 				if f.n.index.has(c) {
@@ -336,6 +341,9 @@ func (t *Iterator[T]) Get() []T {
 }
 
 func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
+
+	//	println("==========================", fmt.Sprintf("%q", prefixes))
+
 	return &Iterator[T]{
 		frames:   append(make([]frame[T], 0, 32), frame[T]{n: n}),
 		prefixes: prefixes,

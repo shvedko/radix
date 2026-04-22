@@ -3,6 +3,7 @@ package radix_test
 import (
 	"fmt"
 	"radix"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -87,6 +88,30 @@ func ExampleRadix_Dump() {
 		fmt.Println(i.Get())
 	}
 
+	fmt.Println("===[Pavlov]:")
+	i = t.Search([]byte("Pavlov"))
+	for i.Next() {
+		fmt.Println(i.Get())
+	}
+
+	fmt.Println("===[P, ]:")
+	i = t.Search([]byte("P"), nil)
+	for i.Next() {
+		fmt.Println(i.Get())
+	}
+
+	fmt.Println("===[P, , ]:")
+	i = t.Search([]byte("P"), nil, nil)
+	for i.Next() {
+		fmt.Println(i.Get())
+	}
+
+	fmt.Println("===[P, X]:")
+	i = t.Search([]byte("P"), []byte("X"))
+	for i.Next() {
+		fmt.Println(i.Get())
+	}
+
 	fmt.Println("===[, I]:")
 	i = t.Search(nil, []byte("I"))
 	for i.Next() {
@@ -160,6 +185,22 @@ func ExampleRadix_Dump() {
 	// ===[T]:
 	// ===[Pavlova]:
 	// [8]
+	// ===[Pavlov]:
+	// [2]
+	// [1]
+	// [7]
+	// [8]
+	// ===[P, ]:
+	// [10]
+	// [2]
+	// [1]
+	// [7]
+	// [8]
+	// [0]
+	// [3]
+	// [9]
+	// ===[P, , ]:
+	// ===[P, X]:
 	// ===[, I]:
 	// [10]
 	// [2]
@@ -340,7 +381,85 @@ func ExampleRadix_Walk() {
 }
 
 func TestRadix_Search(t *testing.T) {
+	r := radix.New[string]()
 
+	r.Insert("v1", false, []byte("a"))
+	r.Insert("v2", false, []byte("ab"))
+	r.Insert("v3", false, []byte("abc"))
+
+	r.Insert("d1", false, []byte("123"))
+	r.Insert("d2", false, []byte("124"))
+	r.Insert("d3", false, []byte("125"))
+
+	r.Insert("s1", false, []byte("user"), []byte("settings"), []byte("theme"))
+	r.Insert("s2", false, []byte("user"), []byte("settings"), []byte("font"))
+	r.Insert("s3", false, []byte("user"), []byte("profile"))
+
+	r.Insert("a2", false, []byte("@apple"))
+	r.Insert("a1", false, []byte("@abandon"))
+
+	type args struct {
+		prefixes [][]byte
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		// TODO: Add test cases.
+		{
+			name: "All under 'a'",
+			args: args{prefixes: [][]byte{[]byte("a")}},
+			want: []string{"v1", "v2", "v3"},
+		},
+		{
+			name: "Exact 'ab'",
+			args: args{prefixes: [][]byte{[]byte("ab")}},
+			want: []string{"v2", "v3"},
+		},
+		{
+			name: "Branching",
+			args: args{prefixes: [][]byte{[]byte("12")}},
+			want: []string{"d1", "d2", "d3"},
+		},
+		{
+			name: "Specific branch",
+			args: args{prefixes: [][]byte{[]byte("124")}},
+			want: []string{"d2"},
+		},
+		{
+			name: "Layered deep",
+			args: args{prefixes: [][]byte{[]byte("user"), []byte("settings")}},
+			want: []string{"s2", "s1"},
+		},
+		{
+			name: "Layered skip middle",
+			args: args{prefixes: [][]byte{[]byte("user"), nil, []byte("theme")}},
+			want: []string{"s1"},
+		},
+		{
+			name: "Over-prefixed (not exists)",
+			args: args{prefixes: [][]byte{[]byte("a"), []byte("extra")}},
+			want: nil,
+		},
+		{
+			name: "Longer search than value",
+			args: args{prefixes: [][]byte{[]byte("abcd")}},
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got []string
+			i := r.Search(tt.args.prefixes...)
+			for i.Next() {
+				got = append(got, i.Get()...)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Search() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }
 
 func BenchmarkRadix_100(b *testing.B) {
