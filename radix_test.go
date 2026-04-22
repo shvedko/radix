@@ -481,6 +481,11 @@ func TestRadix_Search(t *testing.T) {
 			args: args{prefixes: nil},
 			want: []string{"d1", "d2", "d3", "v1", "v2", "v3", "s3", "s4", "s2", "s1", "a3", "a1", "a2"},
 		},
+		{
+			name: "Longest full scan",
+			args: args{prefixes: [][]byte{nil, nil, nil, nil}},
+			want: []string{"s4"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
