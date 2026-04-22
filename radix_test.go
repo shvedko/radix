@@ -380,6 +380,11 @@ func ExampleRadix_Walk() {
 	//
 }
 
+func newTestDumper[T any](t *testing.T) func(prefix []byte, level int, end bool, values []T) bool {
+	t.Helper()
+	return newDumper[T](t.Log)
+}
+
 func TestRadix_Search(t *testing.T) {
 	r := radix.New[string]()
 
@@ -468,8 +473,13 @@ func TestRadix_Search(t *testing.T) {
 		},
 		{
 			name: "Longer search than value",
-			args: args{prefixes: [][]byte{[]byte("abcd")}},
+			args: args{prefixes: [][]byte{[]byte("abc1")}},
 			want: nil,
+		},
+		{
+			name: "All for nothing",
+			args: args{prefixes: nil},
+			want: []string{"d1", "d2", "d3", "v1", "v2", "v3", "s3", "s4", "s2", "s1", "a3", "a1", "a2"},
 		},
 	}
 	for _, tt := range tests {
@@ -484,11 +494,6 @@ func TestRadix_Search(t *testing.T) {
 			}
 		})
 	}
-}
-
-func newTestDumper[T any](t *testing.T) func(prefix []byte, level int, end bool, values []T) bool {
-	t.Helper()
-	return newDumper[T](t.Log)
 }
 
 func BenchmarkRadix_100(b *testing.B) {
@@ -517,4 +522,72 @@ func BenchmarkRadix_100(b *testing.B) {
 			t.Walk(d)
 		}
 	})
+
+	b.Run("Point", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			n := 0
+			y := t.Search([]byte("City1"), []byte("Street41"))
+			for y.Next() {
+				v := y.Get()
+				if len(v) != 1 || v[0] != 41 {
+					b.Fatal(v)
+				}
+				n++
+			}
+			if n != 1 {
+				b.Fatal(n, "!=", 1)
+			}
+		}
+	})
+
+	b.Run("Prefix", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			n := 0
+			y := t.Search([]byte("City7"), []byte("Street7"))
+			for y.Next() {
+				v := y.Get()
+				if len(v) != 1 {
+					b.Fatal(v, 1)
+				} else if v[0] > 7 && v[0]/10 != 7 {
+					b.Fatal(v, 2)
+				} else if v[0] < 8 && v[0] != 7 {
+					b.Fatal(v, 3)
+				}
+				n++
+			}
+			if n != 3 {
+				b.Fatal(n, "!=", 3)
+			}
+		}
+	})
+
+	b.Run("Deep", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			n := 0
+			y := t.Search(nil, []byte("Street7"))
+			for y.Next() {
+				v := y.Get()
+				if len(v) != 1 {
+					b.Fatal(v, 1)
+				} else if v[0] > 7 && v[0]/10 != 7 {
+					b.Fatal(v, 2)
+				} else if v[0] < 8 && v[0] != 7 {
+					b.Fatal(v, 3)
+				}
+				n++
+			}
+			if n != 11 {
+				b.Fatal(n, "!=", 11)
+			}
+		}
+	})
+}
+
+func TestIterator_Next(t *testing.T) {
+	if radix.New[int]().Search().Next() {
+		t.Fatal(0)
+	}
 }

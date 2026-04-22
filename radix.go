@@ -335,9 +335,6 @@ func (t *Iterator[T]) Get() []T {
 }
 
 func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
-
-	//	println("==========================", fmt.Sprintf("%q", prefixes))
-
 	return &Iterator[T]{
 		frames:   append(make([]frame[T], 0, 32), frame[T]{n: n}),
 		prefixes: prefixes,
