@@ -259,72 +259,70 @@ func (t *Iterator[T]) Next() bool {
 		if matched {
 			f.offset += consumed
 			if end {
-				if len(prefix) == f.offset {
-					switch f.mode {
-					case 0:
-						f.mode++
-						if len(f.n.values) > 0 && f.layer >= len(t.prefixes)-1 {
-							return true
-						}
-						fallthrough
+				switch f.mode {
+				case 0:
+					f.mode++
+					if len(f.n.values) > 0 && f.layer >= len(t.prefixes)-1 {
+						return true
+					}
+					fallthrough
 
+				case 1:
+					f.mode++
+					if f.n.next != nil {
+						t.frames = append(t.frames, frame[T]{
+							n:      f.n.next,
+							offset: 0,
+							layer:  f.layer + 1,
+						})
+						continue
+					}
+					fallthrough
+
+				case 2:
+					m := ^uint64(0) << (f.c & 63)
+					switch f.c >> 6 {
+					case 0:
+						m &= f.n.index[0]
+						if m != 0 {
+							t.appendChild(0<<6, m, f)
+							continue
+						}
+						m = ^m
+						fallthrough
 					case 1:
-						f.mode++
-						if f.n.next != nil {
-							t.frames = append(t.frames, frame[T]{
-								n:      f.n.next,
-								offset: 0,
-								layer:  f.layer + 1,
-							})
+						m &= f.n.index[1]
+						if m != 0 {
+							t.appendChild(1<<6, m, f)
+							continue
+						}
+						m = ^m
+						fallthrough
+					case 2:
+						m &= f.n.index[2]
+						if m != 0 {
+							t.appendChild(2<<6, m, f)
+							continue
+						}
+						m = ^m
+						fallthrough
+					case 3:
+						m &= f.n.index[3]
+						if m != 0 {
+							t.appendChild(3<<6, m, f)
 							continue
 						}
 						fallthrough
-
-					case 2:
-						m := ^uint64(0) << (f.c & 63)
-						switch f.c >> 6 {
-						case 0:
-							m &= f.n.index[0]
-							if m != 0 {
-								t.appendChild(0<<6, m, f)
-								continue
-							}
-							m = ^m
-							fallthrough
-						case 1:
-							m &= f.n.index[1]
-							if m != 0 {
-								t.appendChild(1<<6, m, f)
-								continue
-							}
-							m = ^m
-							fallthrough
-						case 2:
-							m &= f.n.index[2]
-							if m != 0 {
-								t.appendChild(2<<6, m, f)
-								continue
-							}
-							m = ^m
-							fallthrough
-						case 3:
-							m &= f.n.index[3]
-							if m != 0 {
-								t.appendChild(3<<6, m, f)
-								continue
-							}
-							fallthrough
-						default:
-							f.mode++
-						}
-						fallthrough
-
-					case 3:
+					default:
+						f.mode++
 					}
+					fallthrough
+
+				case 3:
 				}
 			}
 
-			if f.mode != 3 && f.offset < len(prefix) {
+			if f.mode != 3 {
 				f.mode = 3
 				c := prefix[f.offset]
 				if f.n.index.has(c) {
@@ -366,7 +364,7 @@ func (t *Iterator[T]) Get() []T {
 
 func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
 	return &Iterator[T]{
-		frames:   append(make([]frame[T], 0, 32), frame[T]{n: n}),
+		frames:   []frame[T]{{n: n}},
 		prefixes: prefixes,
 	}
 }
