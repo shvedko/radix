@@ -237,7 +237,7 @@ type frame[T any] struct {
 	n      *Radix[T]
 	offset int
 	layer  int
-	mode   int
+	mode   uint8
 	c      uint8
 }
 
