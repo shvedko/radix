@@ -1,6 +1,8 @@
 package radix
 
-import "math/bits"
+import (
+	"math/bits"
+)
 
 type bits256 [4]uint64
 
@@ -18,15 +20,10 @@ type Radix[T any] struct {
 
 func New[T any]() *Radix[T] { return &Radix[T]{} }
 
-func (n *Radix[T]) matchPrefix(prefix []byte, offset int) (bool, int, bool) {
+func (n *Radix[T]) matchPrefix(prefix []byte) (bool, int, bool) {
 	if len(prefix) == 0 {
 		return true, 0, true
 	}
-
-	if offset >= len(prefix) {
-		return true, 0, true
-	}
-	prefix = prefix[offset:]
 
 	i := 0
 	for i < len(n.prefix) && i < len(prefix) {
@@ -92,17 +89,17 @@ func (n *Radix[T]) split(size int) {
 	n.next = nil
 }
 
-func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
-	if len(fields) == 0 {
+func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
+	if len(prefixes) == 0 {
 		return false
 	}
 
 	p := n
 
-	for i, field := range fields {
-		p = p.insert(field)
+	for i, prefix := range prefixes {
+		p = p.insert(prefix)
 
-		if i < len(fields)-1 {
+		if i < len(prefixes)-1 {
 			if p.next == nil {
 				p.next = &Radix[T]{}
 			}
@@ -115,6 +112,7 @@ func (n *Radix[T]) Insert(value T, unique bool, fields ...[]byte) bool {
 	}
 
 	p.values = append(p.values, value)
+
 	return true
 }
 
@@ -183,16 +181,16 @@ func (n *Radix[T]) Walk(yield dumper[T]) bool {
 	return n.walk(yield)
 }
 
-func (n *Radix[T]) walk(yield dumper[T]) bool {
-	type frame struct {
-		n     *Radix[T]
-		level int
-		end   bool
-	}
+type step[T any] struct {
+	n     *Radix[T]
+	level int
+	end   bool
+}
 
+func (n *Radix[T]) walk(yield dumper[T]) bool {
 	var (
-		p frame
-		q = append(make([]frame, 0, 32), frame{n: n, end: true})
+		p step[T]
+		q = append(make([]step[T], 0, 32), step[T]{n: n, end: true})
 	)
 
 	for len(q) > 0 {
@@ -206,7 +204,7 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 		p.level++
 
 		if p.n.next != nil {
-			q = append(q, frame{
+			q = append(q, step[T]{
 				n:     p.n.next,
 				level: p.level,
 				end:   p.end,
@@ -222,7 +220,7 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 				i = b + k<<6
 				m &^= 1 << b
 
-				q = append(q, frame{
+				q = append(q, step[T]{
 					n:     p.n.children[i],
 					level: p.level,
 					end:   p.end,
@@ -233,4 +231,113 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 	}
 
 	return true
+}
+
+type frame[T any] struct {
+	n      *Radix[T]
+	offset int
+	layer  int
+	mode   int
+	c      uint8
+}
+
+type Iterator[T any] struct {
+	frames   []frame[T]
+	prefixes [][]byte
+}
+
+func (t *Iterator[T]) Next() bool {
+	for len(t.frames) > 0 {
+		f := &t.frames[len(t.frames)-1]
+
+		var prefix []byte
+		if f.layer < len(t.prefixes) {
+			prefix = t.prefixes[f.layer]
+		}
+
+		matched, consumed, end := f.n.matchPrefix(prefix[f.offset:])
+		if matched {
+			f.offset += consumed
+			if end {
+				if len(prefix) == 0 || f.layer >= len(t.prefixes)-1 {
+					switch f.mode {
+
+					case 0:
+						f.mode++
+						if len(f.n.values) > 0 {
+							return true
+						}
+						fallthrough
+
+					case 1:
+						f.mode++
+						if f.n.next != nil {
+							t.frames = append(t.frames, frame[T]{
+								n:      f.n.next,
+								offset: 0,
+								layer:  f.layer + 1,
+							})
+							continue
+						}
+						fallthrough
+
+					case 2:
+						for !f.n.index.has(f.c) {
+							f.c++
+							if f.c == 0 {
+								f.mode++
+								break
+							}
+						}
+						if f.mode == 2 {
+							f.c++
+							if f.c == 0 {
+								f.mode++
+							}
+							t.frames = append(t.frames, frame[T]{
+								n:      f.n.children[f.c-1],
+								offset: f.offset,
+								layer:  f.layer,
+							})
+							continue
+						}
+						fallthrough
+
+					case 3:
+					}
+				}
+			}
+
+			if f.mode != 3 {
+				f.mode = 3
+				c := prefix[f.offset]
+				if f.n.index.has(c) {
+					t.frames = append(t.frames, frame[T]{
+						n:      f.n.children[c],
+						offset: f.offset,
+						layer:  f.layer,
+					})
+					continue
+				}
+			}
+		}
+
+		t.frames = t.frames[:len(t.frames)-1]
+	}
+
+	return false
+}
+
+func (t *Iterator[T]) Get() []T {
+	if len(t.frames) == 0 {
+		return nil
+	}
+	return t.frames[len(t.frames)-1].n.values
+}
+
+func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
+	return &Iterator[T]{
+		frames:   append(make([]frame[T], 0, 32), frame[T]{n: n}),
+		prefixes: prefixes,
+	}
 }
