@@ -281,34 +281,34 @@ func (t *Iterator[T]) Next() bool {
 						fallthrough
 
 					case 2:
-						u := ^uint64(0) << (f.c & 63)
+						m := ^uint64(0) << (f.c & 63)
 						switch f.c >> 6 {
 						case 0:
-							m := f.n.index[0] & u
+							m &= f.n.index[0]
 							if m != 0 {
 								t.appendChild(0, m, f)
 								continue
 							}
-							u = ^uint64(0)
+							m = ^m
 							fallthrough
 						case 1:
-							m := f.n.index[1] & u
+							m &= f.n.index[1]
 							if m != 0 {
 								t.appendChild(1, m, f)
 								continue
 							}
-							u = ^uint64(0)
+							m = ^m
 							fallthrough
 						case 2:
-							m := f.n.index[2] & u
+							m &= f.n.index[2]
 							if m != 0 {
 								t.appendChild(2, m, f)
 								continue
 							}
-							u = ^uint64(0)
+							m = ^m
 							fallthrough
 						case 3:
-							m := f.n.index[3] & u
+							m &= f.n.index[3]
 							if m != 0 {
 								t.appendChild(3, m, f)
 								continue
