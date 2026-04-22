@@ -286,7 +286,7 @@ func (t *Iterator[T]) Next() bool {
 						case 0:
 							m &= f.n.index[0]
 							if m != 0 {
-								t.appendChild(0, m, f)
+								t.appendChild(0<<6, m, f)
 								continue
 							}
 							m = ^m
@@ -294,7 +294,7 @@ func (t *Iterator[T]) Next() bool {
 						case 1:
 							m &= f.n.index[1]
 							if m != 0 {
-								t.appendChild(1, m, f)
+								t.appendChild(1<<6, m, f)
 								continue
 							}
 							m = ^m
@@ -302,7 +302,7 @@ func (t *Iterator[T]) Next() bool {
 						case 2:
 							m &= f.n.index[2]
 							if m != 0 {
-								t.appendChild(2, m, f)
+								t.appendChild(2<<6, m, f)
 								continue
 							}
 							m = ^m
@@ -310,7 +310,7 @@ func (t *Iterator[T]) Next() bool {
 						case 3:
 							m &= f.n.index[3]
 							if m != 0 {
-								t.appendChild(3, m, f)
+								t.appendChild(3<<6, m, f)
 								continue
 							}
 							fallthrough
@@ -344,8 +344,8 @@ func (t *Iterator[T]) Next() bool {
 	return false
 }
 
-func (t *Iterator[T]) appendChild(k int, m uint64, f *frame[T]) {
-	i := k<<6 + bits.TrailingZeros64(m)
+func (t *Iterator[T]) appendChild(i int, m uint64, f *frame[T]) {
+	i += bits.TrailingZeros64(m)
 	f.c = uint8(i) + 1
 	if f.c == 0 {
 		f.mode++
