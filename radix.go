@@ -344,9 +344,9 @@ func (t *Iterator[T]) Next() bool {
 	return false
 }
 
-func (t *Iterator[T]) appendChild(i int, m uint64, f *frame[T]) {
-	i += bits.TrailingZeros64(m)
-	f.c = uint8(i) + 1
+func (t *Iterator[T]) appendChild(i uint8, m uint64, f *frame[T]) {
+	i += uint8(bits.TrailingZeros64(m))
+	f.c = i + 1
 	if f.c == 0 {
 		f.mode++
 	}
@@ -368,5 +368,16 @@ func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
 	return &Iterator[T]{
 		frames:   append(make([]frame[T], 0, 32), frame[T]{n: n}),
 		prefixes: prefixes,
+	}
+}
+
+func (n *Radix[T]) Foreach(prefixes ...[]byte) func(func(T) bool) {
+	i := n.Search(prefixes...)
+	return func(yield func(T) bool) {
+		for i.Next() {
+			for _, v := range i.Get() {
+				yield(v)
+			}
+		}
 	}
 }
