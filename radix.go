@@ -256,16 +256,10 @@ func (t *Iterator[T]) Next() bool {
 		}
 
 		matched, consumed, end := f.n.matchPrefix(prefix[f.offset:])
-
-		//println(matched, consumed, end, f.mode, f.layer, f.offset, f.c, f.n, string(f.n.prefix), f.n.values)
-
 		if matched {
 			f.offset += consumed
 			if end {
 				if len(prefix) == f.offset {
-
-					//println(string(prefix), f.offset)
-
 					switch f.mode {
 					case 0:
 						f.mode++

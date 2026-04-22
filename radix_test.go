@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func newDumper[T any]() func(prefix []byte, level int, end bool, values []T) bool {
+func newDumper[T any](p func(a ...any)) func(prefix []byte, level int, end bool, values []T) bool {
 	m := make(map[int]uint8)
 	v := [2]rune{'│', ' '}
 	r := [2]rune{'├', '└'}
@@ -42,7 +42,7 @@ func newDumper[T any]() func(prefix []byte, level int, end bool, values []T) boo
 		if len(values) > 0 {
 			_, _ = fmt.Fprintf(&b, " = %v", values)
 		}
-		fmt.Println(&b)
+		p(&b)
 		return true
 	}
 }
@@ -62,7 +62,7 @@ func ExampleRadix_Dump() {
 	t.Insert(0, false, []byte("Petras"), []byte("Alex"))
 	t.Insert(10, false, []byte("P"), []byte("I"))
 
-	t.Dump(newDumper[int]())
+	t.Dump(newDumper[int](func(a ...any) { fmt.Println(a...) }))
 
 	fmt.Println("===[]:")
 	i := t.Search()
@@ -232,7 +232,7 @@ func ExampleRadix_Walk() {
 		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
 	}
 
-	t.Walk(newDumper[int]())
+	t.Walk(newDumper[int](func(a ...any) { fmt.Println(a...) }))
 
 	// Output:
 	// ┬
@@ -394,9 +394,13 @@ func TestRadix_Search(t *testing.T) {
 	r.Insert("s1", false, []byte("user"), []byte("settings"), []byte("theme"))
 	r.Insert("s2", false, []byte("user"), []byte("settings"), []byte("font"))
 	r.Insert("s3", false, []byte("user"), []byte("profile"))
+	r.Insert("s4", false, []byte("user"), []byte("profile"), nil, []byte("size"))
 
-	r.Insert("a2", false, []byte("@apple"))
-	r.Insert("a1", false, []byte("@abandon"))
+	r.Insert("a2", false, []byte{255, 255, 255, 0})
+	r.Insert("a1", false, []byte{255, 0, 255, 255})
+	r.Insert("a3", false, []byte("Привет"))
+
+	r.Walk(newTestDumper[string](t))
 
 	type args struct {
 		prefixes [][]byte
@@ -411,6 +415,16 @@ func TestRadix_Search(t *testing.T) {
 			name: "All under 'a'",
 			args: args{prefixes: [][]byte{[]byte("a")}},
 			want: []string{"v1", "v2", "v3"},
+		},
+		{
+			name: "All under '\255'",
+			args: args{prefixes: [][]byte{{255}}},
+			want: []string{"a1", "a2"},
+		},
+		{
+			name: "All under 'При'",
+			args: args{prefixes: [][]byte{[]byte("При")}},
+			want: []string{"a3"},
 		},
 		{
 			name: "Exact 'ab'",
@@ -438,6 +452,16 @@ func TestRadix_Search(t *testing.T) {
 			want: []string{"s1"},
 		},
 		{
+			name: "Layered skip both",
+			args: args{prefixes: [][]byte{nil, nil, []byte("theme")}},
+			want: []string{"s1"},
+		},
+		{
+			name: "Layered skip empty",
+			args: args{prefixes: [][]byte{nil, nil, nil, []byte("size")}},
+			want: []string{"s4"},
+		},
+		{
 			name: "Over-prefixed (not exists)",
 			args: args{prefixes: [][]byte{[]byte("a"), []byte("extra")}},
 			want: nil,
@@ -460,6 +484,11 @@ func TestRadix_Search(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newTestDumper[T any](t *testing.T) func(prefix []byte, level int, end bool, values []T) bool {
+	t.Helper()
+	return newDumper[T](t.Log)
 }
 
 func BenchmarkRadix_100(b *testing.B) {
