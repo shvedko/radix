@@ -281,24 +281,41 @@ func (t *Iterator[T]) Next() bool {
 						fallthrough
 
 					case 2:
-						for !f.n.index.has(f.c) {
-							f.c++
-							if f.c == 0 {
-								f.mode++
-								break
+						u := ^uint64(0) << (f.c & 63)
+						switch f.c >> 6 {
+						case 0:
+							m := f.n.index[0] & u
+							if m != 0 {
+								t.appendChild(0, m, f)
+								continue
 							}
-						}
-						if f.mode == 2 {
-							f.c++
-							if f.c == 0 {
-								f.mode++
+							u = ^uint64(0)
+							fallthrough
+						case 1:
+							m := f.n.index[1] & u
+							if m != 0 {
+								t.appendChild(1, m, f)
+								continue
 							}
-							t.frames = append(t.frames, frame[T]{
-								n:      f.n.children[f.c-1],
-								offset: f.offset,
-								layer:  f.layer,
-							})
-							continue
+							u = ^uint64(0)
+							fallthrough
+						case 2:
+							m := f.n.index[2] & u
+							if m != 0 {
+								t.appendChild(2, m, f)
+								continue
+							}
+							u = ^uint64(0)
+							fallthrough
+						case 3:
+							m := f.n.index[3] & u
+							if m != 0 {
+								t.appendChild(3, m, f)
+								continue
+							}
+							fallthrough
+						default:
+							f.mode++
 						}
 						fallthrough
 
@@ -325,6 +342,19 @@ func (t *Iterator[T]) Next() bool {
 	}
 
 	return false
+}
+
+func (t *Iterator[T]) appendChild(k int, m uint64, f *frame[T]) {
+	i := k<<6 + bits.TrailingZeros64(m)
+	f.c = uint8(i) + 1
+	if f.c == 0 {
+		f.mode++
+	}
+	t.frames = append(t.frames, frame[T]{
+		n:      f.n.children[i],
+		offset: f.offset,
+		layer:  f.layer,
+	})
 }
 
 func (t *Iterator[T]) Get() []T {
