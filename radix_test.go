@@ -9,11 +9,16 @@ import (
 	"testing"
 )
 
-func newDumper[T any](p func(a ...any)) func(prefix []byte, level int, end bool, values []T) bool {
-	m := make(map[int]uint8)
+func newDumper[T any](printers ...func(a ...any)) func(prefix []byte, level uint32, end bool, values []T) bool {
+	if len(printers) == 0 {
+		printers = append(printers, func(a ...any) {
+			fmt.Println(a...)
+		})
+	}
+	m := make(map[uint32]uint8)
 	v := [2]rune{'│', ' '}
 	r := [2]rune{'├', '└'}
-	return func(prefix []byte, l int, e bool, values []T) bool {
+	return func(prefix []byte, l uint32, e bool, values []T) bool {
 		var u uint8
 		if e {
 			u = 1
@@ -21,7 +26,7 @@ func newDumper[T any](p func(a ...any)) func(prefix []byte, level int, end bool,
 		m[l] = u
 		var b strings.Builder
 		if len(m) > 1 {
-			for i := 1; i < l; i++ {
+			for i := uint32(1); i < l; i++ {
 				b.WriteRune(v[m[i]])
 				b.WriteString("  ")
 			}
@@ -42,7 +47,9 @@ func newDumper[T any](p func(a ...any)) func(prefix []byte, level int, end bool,
 		if len(values) > 0 {
 			_, _ = fmt.Fprintf(&b, " = %v", values)
 		}
-		p(&b)
+		for _, printer := range printers {
+			printer(&b)
+		}
 		return true
 	}
 }
@@ -62,7 +69,7 @@ func ExampleRadix_Dump() {
 	t.Insert(0, false, []byte("Petras"), []byte("Alex"))
 	t.Insert(10, false, []byte("P"), []byte("I"))
 
-	t.Dump(newDumper[int](func(a ...any) { fmt.Println(a...) }))
+	t.Dump(newDumper[int]())
 
 	fmt.Println("===[]:")
 	i := t.Search()
@@ -232,7 +239,7 @@ func ExampleRadix_Walk() {
 		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
 	}
 
-	t.Walk(newDumper[int](func(a ...any) { fmt.Println(a...) }))
+	t.Walk(newDumper[int]())
 
 	// Output:
 	// ┬
@@ -380,7 +387,7 @@ func ExampleRadix_Walk() {
 	//
 }
 
-func newTestDumper[T any](t *testing.T) func(prefix []byte, level int, end bool, values []T) bool {
+func newTestDumper[T any](t *testing.T) func(prefix []byte, level uint32, end bool, values []T) bool {
 	t.Helper()
 	return newDumper[T](t.Log)
 }
@@ -510,7 +517,7 @@ func BenchmarkRadix_100(b *testing.B) {
 		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
 	}
 
-	d := func([]byte, int, bool, []int) bool { return true }
+	d := func([]byte, uint32, bool, []int) bool { return true }
 
 	b.ResetTimer()
 
@@ -595,4 +602,143 @@ func TestIterator_Next(t *testing.T) {
 	if radix.New[int]().Search().Next() {
 		t.Fatal(0)
 	}
+}
+
+func ExampleIterator_Remove() {
+	t := radix.New[int]()
+
+	t.Insert(8, false, []byte("Pavlova"), []byte("Zinaida"))
+	t.Insert(1, false, []byte("Pavlov"), []byte("Ivan"))
+	t.Insert(3, false, []byte("Petrov"), []byte("Ivan"))
+
+	t.Dump(newDumper[int]())
+
+	i := t.Search([]byte("Pavlov"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 1:
+			fmt.Println("REMOVE [Pavlov, Ivan]")
+		default:
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
+	i = t.Search([]byte("Pavlova"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 8:
+			fmt.Println("REMOVE [Pavlova, Zinaida]")
+		default:
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
+	t.Insert(8, false, []byte("Pavlova"), []byte("Zinaida"))
+
+	fmt.Println("INSERT [Pavlova, Zinaida]")
+
+	t.Dump(newDumper[int]())
+
+	i = t.Search([]byte("P"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 8:
+			fmt.Println("REMOVE [Pavlova, Zinaida]")
+		case 3:
+			fmt.Println("REMOVE [Petrov, Ivan]")
+		default:
+			println(got)
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
+	// Output:
+	// ┬
+	// └──[P]:"P"
+	//    ├──[a]:"avlov"
+	//    │  ├──[a]:"a"
+	//    │  │  └─»┬
+	//    │  │     └──[Z]:"Zinaida" = [8]
+	//    │  └─»┬
+	//    │     └──[I]:"Ivan" = [1]
+	//    └──[e]:"etrov"
+	//       └─»┬
+	//          └──[I]:"Ivan" = [3]
+	// REMOVE [Pavlov, Ivan]
+	// ┬
+	// └──[P]:"P"
+	//    ├──[a]:"avlova"
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └──[e]:"etrov"
+	//       └─»┬
+	//          └──[I]:"Ivan" = [3]
+	// REMOVE [Pavlova, Zinaida]
+	// ┬
+	// └──[P]:"Petrov"
+	//    └─»┬
+	//       └──[I]:"Ivan" = [3]
+	// INSERT [Pavlova, Zinaida]
+	// ┬
+	// └──[P]:"P"
+	//    ├──[a]:"avlova"
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └──[e]:"etrov"
+	//       └─»┬
+	//          └──[I]:"Ivan" = [3]
+	// REMOVE [Pavlova, Zinaida]
+	// REMOVE [Petrov, Ivan]
+	// ┬
+	//
+}
+
+func ExampleIterator_Remove_mergeLongerPrefix() {
+	t := radix.New[int]()
+
+	// Создаем цепочку:
+	// Root -> "A" (values: [1]) -> "BC" (values: [2])
+	t.Insert(1, false, []byte("A"))
+	t.Insert(2, false, []byte("ABC"))
+
+	// Дерево:
+	// ┬
+	// └──[A]:"A" = [1]
+	//    └──[B]:"BC" = [2]
+
+	i := t.Search([]byte("A"))
+
+	// 1. Находим "A"
+	if i.Next() {
+		fmt.Println("Found:", i.Get()) // Должен выдать [1]
+	}
+
+	// 2. Удаляем "A". Узел "A" теперь пуст и имеет одного ребенка "BC".
+	// В этот момент Remove() вызывает merge().
+	// Узел "A" ВПИТЫВАЕТ в себя "BC".
+	// Теперь узел, на котором СТОИТ итератор, имеет префикс "ABC" и значения [2].
+	i.Remove()
+
+	// 3. Пытаемся найти следующий элемент (это должен быть [2])
+	if i.Next() {
+		fmt.Println("Found after remove:", i.Get())
+	} else {
+		fmt.Println("FAIL: Next element lost!")
+	}
+	// Output:
+	// Found: [1]
+	// Found after remove: [2]
+	//
 }

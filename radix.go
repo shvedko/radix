@@ -9,18 +9,29 @@ type bits256 [4]uint64
 func (b *bits256) has(i uint8) bool { return b[i>>6]&(1<<(i&63)) != 0 }
 func (b *bits256) set(i uint8)      { b[i>>6] |= 1 << (i & 63) }
 func (b *bits256) pop(i uint8)      { b[i>>6] &^= 1 << (i & 63) }
+func (b *bits256) num(i uint8) int {
+	k := i >> 6
+	i &= 63
+	m := uint64(1)<<i - 1
+	n := bits.OnesCount64(b[k] & m)
+	for k > 0 {
+		k--
+		n += bits.OnesCount64(b[k])
+	}
+	return n
+}
 
 type Radix[T any] struct {
 	prefix   []byte
 	index    bits256
-	children [256]*Radix[T]
+	children []*Radix[T]
 	next     *Radix[T]
 	values   []T
 }
 
 func New[T any]() *Radix[T] { return &Radix[T]{} }
 
-func (n *Radix[T]) matchPrefix(prefix []byte) (bool, int, bool) {
+func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 	if len(prefix) == 0 {
 		return true, 0, true
 	}
@@ -45,26 +56,27 @@ func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
 	for len(prefix) > 0 {
 		b := prefix[0]
 
-		c := p.children[b]
-		if c == nil {
-			c = &Radix[T]{prefix: prefix}
-			p.children[b] = c
+		i := p.index.num(b)
+		if !p.index.has(b) {
 			p.index.set(b)
-			return c
+			p.children = append(p.children, nil)
+			copy(p.children[i+1:], p.children[i:])
+			p.children[i] = &Radix[T]{prefix: prefix}
+			return p.children[i]
 		}
 
-		size := c.commonPrefix(prefix)
-		if size < len(c.prefix) {
-			c.split(size)
+		p = p.children[i]
+		size := p.common(prefix)
+		if size < len(p.prefix) {
+			p.split(size)
 		}
 
 		prefix = prefix[size:]
-		p = c
 	}
 	return p
 }
 
-func (n *Radix[T]) commonPrefix(prefix []byte) int {
+func (n *Radix[T]) common(prefix []byte) int {
 	i := 0
 	for i < len(prefix) && i < len(n.prefix) && prefix[i] == n.prefix[i] {
 		i++
@@ -80,8 +92,7 @@ func (n *Radix[T]) split(size int) {
 		next:     n.next,
 		values:   n.values,
 	}
-	n.children = [256]*Radix[T]{}
-	n.children[c.prefix[0]] = c
+	n.children = []*Radix[T]{c}
 	n.index = bits256{}
 	n.index.set(c.prefix[0])
 	n.prefix = n.prefix[:size]
@@ -116,65 +127,34 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
 	return true
 }
 
-type dumper[T any] func(prefix []byte, level int, end bool, values []T) bool
+type dumper[T any] func(prefix []byte, level uint32, end bool, values []T) bool
 
 func (n *Radix[T]) Dump(yield dumper[T]) bool {
 	return n.dump(0, true, yield)
 }
 
-func (n *Radix[T]) dump(level int, end bool, yield dumper[T]) bool {
+func (n *Radix[T]) dump(level uint32, end bool, yield dumper[T]) bool {
 	if !yield(n.prefix, level, end, n.values) {
 		return false
 	}
 
 	level++
+	end = n.next == nil
 
-	var j, k, i, b int
-	var m uint64
-	var l bool
-	for k = 3; k >= 0; k-- {
-		m = n.index[k]
-		if m != 0 {
-			b = 63 - bits.LeadingZeros64(m)
-			j = b + k<<6
-			m &^= 1 << b
-			l = true
-			break
-		}
-	}
-
-	for h := 0; h < k; h++ {
-		z := n.index[h]
-		for z != 0 {
-			b = bits.TrailingZeros64(z)
-			i = b + h<<6
-			z &^= 1 << b
-
+	if len(n.children) > 0 {
+		i := 0
+		for i < len(n.children)-1 {
 			if !n.children[i].dump(level, false, yield) {
 				return false
 			}
+			i++
 		}
-	}
-
-	for m != 0 {
-		b = bits.TrailingZeros64(m)
-		i = b + k<<6
-		m &^= 1 << b
-
-		if !n.children[i].dump(level, false, yield) {
+		if !n.children[i].dump(level, end, yield) {
 			return false
 		}
 	}
 
-	e := n.next == nil
-
-	if l {
-		if !n.children[j].dump(level, e, yield) {
-			return false
-		}
-	}
-
-	return e || n.next.dump(level, true, yield)
+	return end || n.next.dump(level, true, yield)
 }
 
 func (n *Radix[T]) Walk(yield dumper[T]) bool {
@@ -183,7 +163,7 @@ func (n *Radix[T]) Walk(yield dumper[T]) bool {
 
 type step[T any] struct {
 	n     *Radix[T]
-	level int
+	level uint32
 	end   bool
 }
 
@@ -212,25 +192,46 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 			p.end = false
 		}
 
-		for k := 3; k >= 0; k-- {
-			m := p.n.index[k]
-			var i, b int
-			for m != 0 {
-				b = 63 - bits.LeadingZeros64(m)
-				i = b + k<<6
-				m &^= 1 << b
-
+		i := len(p.n.children)
+		if i > 0 {
+			i--
+			q = append(q, step[T]{
+				n:     p.n.children[i],
+				level: p.level,
+				end:   p.end,
+			})
+			for i > 0 {
+				i--
 				q = append(q, step[T]{
 					n:     p.n.children[i],
 					level: p.level,
-					end:   p.end,
+					end:   false,
 				})
-				p.end = false
 			}
 		}
 	}
 
 	return true
+}
+
+func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
+	return &Iterator[T]{
+		frames:   []frame[T]{{n: n}},
+		prefixes: prefixes,
+	}
+}
+
+func (n *Radix[T]) Foreach(prefixes ...[]byte) func(func(T) bool) {
+	i := n.Search(prefixes...)
+	return func(yield func(T) bool) {
+		for i.Next() {
+			for _, v := range i.Get() {
+				if !yield(v) {
+					return
+				}
+			}
+		}
+	}
 }
 
 type frame[T any] struct {
@@ -255,7 +256,7 @@ func (t *Iterator[T]) Next() bool {
 			prefix = t.prefixes[f.layer]
 		}
 
-		matched, consumed, end := f.n.matchPrefix(prefix[f.offset:])
+		matched, consumed, end := f.n.match(prefix[f.offset:])
 		if matched {
 			f.offset += uint32(consumed)
 			if end {
@@ -271,9 +272,8 @@ func (t *Iterator[T]) Next() bool {
 					f.mode++
 					if f.n.next != nil {
 						t.frames = append(t.frames, frame[T]{
-							n:      f.n.next,
-							offset: 0,
-							layer:  f.layer + 1,
+							n:     f.n.next,
+							layer: f.layer + 1,
 						})
 						continue
 					}
@@ -285,7 +285,7 @@ func (t *Iterator[T]) Next() bool {
 					case 0:
 						m &= f.n.index[0]
 						if m != 0 {
-							t.appendChild(0<<6, m, f)
+							t.append(0<<6, m, f)
 							continue
 						}
 						m = ^m
@@ -293,7 +293,7 @@ func (t *Iterator[T]) Next() bool {
 					case 1:
 						m &= f.n.index[1]
 						if m != 0 {
-							t.appendChild(1<<6, m, f)
+							t.append(1<<6, m, f)
 							continue
 						}
 						m = ^m
@@ -301,7 +301,7 @@ func (t *Iterator[T]) Next() bool {
 					case 2:
 						m &= f.n.index[2]
 						if m != 0 {
-							t.appendChild(2<<6, m, f)
+							t.append(2<<6, m, f)
 							continue
 						}
 						m = ^m
@@ -309,7 +309,7 @@ func (t *Iterator[T]) Next() bool {
 					case 3:
 						m &= f.n.index[3]
 						if m != 0 {
-							t.appendChild(3<<6, m, f)
+							t.append(3<<6, m, f)
 							continue
 						}
 						fallthrough
@@ -327,7 +327,7 @@ func (t *Iterator[T]) Next() bool {
 				c := prefix[f.offset]
 				if f.n.index.has(c) {
 					t.frames = append(t.frames, frame[T]{
-						n:      f.n.children[c],
+						n:      f.n.children[f.n.index.num(c)],
 						offset: f.offset,
 						layer:  f.layer,
 					})
@@ -342,14 +342,14 @@ func (t *Iterator[T]) Next() bool {
 	return false
 }
 
-func (t *Iterator[T]) appendChild(i uint8, m uint64, f *frame[T]) {
+func (t *Iterator[T]) append(i uint8, m uint64, f *frame[T]) {
 	i += uint8(bits.TrailingZeros64(m))
 	f.c = i + 1
 	if f.c == 0 {
 		f.mode++
 	}
 	t.frames = append(t.frames, frame[T]{
-		n:      f.n.children[i],
+		n:      f.n.children[f.n.index.num(i)],
 		offset: f.offset,
 		layer:  f.layer,
 	})
@@ -362,20 +362,57 @@ func (t *Iterator[T]) Get() []T {
 	return t.frames[len(t.frames)-1].n.values
 }
 
-func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
-	return &Iterator[T]{
-		frames:   []frame[T]{{n: n}},
-		prefixes: prefixes,
+func (t *Iterator[T]) Remove(indices ...int) {
+	if len(t.frames) == 0 {
+		return
+	}
+
+	i := len(t.frames) - 1
+	n := &t.frames[i]
+
+	if len(indices) == 0 {
+		n.n.values = nil
+	} else {
+		// Удаляем по индексам.
+		// Важно: если индексов несколько, их нужно удалять с конца,
+		// чтобы не "поплыли" индексы оставшихся элементов.
+		// TODO
+	}
+
+	for n.n.empty() && i > 0 {
+		p := &t.frames[i-1]
+		p.mode = 1
+		if p.n.next == n.n {
+			p.n.next = nil
+		} else {
+			p.n.remove(n.n.prefix[0])
+		}
+		t.frames = t.frames[:i]
+		i--
+		n = &t.frames[i]
+		n.n.merge()
 	}
 }
 
-func (n *Radix[T]) Foreach(prefixes ...[]byte) func(func(T) bool) {
-	i := n.Search(prefixes...)
-	return func(yield func(T) bool) {
-		for i.Next() {
-			for _, v := range i.Get() {
-				yield(v)
-			}
-		}
+func (n *Radix[T]) merge() {
+	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
+		c := n.children[0]
+		n.prefix = append(n.prefix, c.prefix...)
+		n.index = c.index
+		n.children = c.children
+		n.values = c.values
+		n.next = c.next
 	}
+}
+
+func (n *Radix[T]) empty() bool {
+	return len(n.values) == 0 && n.next == nil && len(n.children) == 0
+}
+
+func (n *Radix[T]) remove(c uint8) {
+	i := n.index.num(c)
+	n.index.pop(c)
+	copy(n.children[i:], n.children[i+1:])
+	n.children[len(n.children)-1] = nil
+	n.children = n.children[:len(n.children)-1]
 }
