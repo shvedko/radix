@@ -235,8 +235,8 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 
 type frame[T any] struct {
 	n      *Radix[T]
-	offset int
-	layer  int
+	offset uint32
+	layer  uint16
 	mode   uint8
 	c      uint8
 }
@@ -251,18 +251,18 @@ func (t *Iterator[T]) Next() bool {
 		f := &t.frames[len(t.frames)-1]
 
 		var prefix []byte
-		if f.layer < len(t.prefixes) {
+		if f.layer < uint16(len(t.prefixes)) {
 			prefix = t.prefixes[f.layer]
 		}
 
 		matched, consumed, end := f.n.matchPrefix(prefix[f.offset:])
 		if matched {
-			f.offset += consumed
+			f.offset += uint32(consumed)
 			if end {
 				switch f.mode {
 				case 0:
 					f.mode++
-					if len(f.n.values) > 0 && f.layer >= len(t.prefixes)-1 {
+					if len(f.n.values) > 0 && f.layer+1 >= uint16(len(t.prefixes)) {
 						return true
 					}
 					fallthrough
