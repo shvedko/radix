@@ -394,6 +394,48 @@ func (t *Iterator[T]) Remove(indices ...int) {
 	}
 }
 
+//func (t *Iterator[T]) Delete() {
+//	if len(t.frames) == 0 {
+//		return
+//	}
+//
+//	last := len(t.frames) - 1
+//	n := t.frames[last].n
+//
+//	// Аннигиляция узла: удаляем всё содержимое и все ветви ниже
+//	n.values = nil
+//	n.children = nil
+//	n.index = bits256{}
+//	n.next = nil
+//
+//	// Теперь запускаем твой "хирургический" подъем.
+//	// Так как n.empty() теперь точно true, подъем пойдет
+//	// до первого узла, у которого есть другие ветки или значения.
+//	i := last
+//	for i >= 0 {
+//		curr := t.frames[i].n
+//		if curr.merge() && i > 0 {
+//			p := &t.frames[i-1]
+//			p.mode = 1 // Сброс родителя для перепроверки
+//
+//			if p.n.next == curr {
+//				p.n.next = nil
+//			} else {
+//				p.n.remove(curr.prefix[0])
+//			}
+//			t.frames = t.frames[:len(t.frames)-1]
+//		} else {
+//			if i > 0 {
+//				t.frames[i-1].mode = 1
+//			}
+//			if !curr.empty() {
+//				break
+//			}
+//		}
+//		i--
+//	}
+//}
+
 func (n *Radix[T]) merge() {
 	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
 		c := n.children[0]
