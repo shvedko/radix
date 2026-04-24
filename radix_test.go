@@ -387,7 +387,7 @@ func ExampleRadix_Walk() {
 	//
 }
 
-func newTestDumper[T any](t *testing.T) func(prefix []byte, level uint32, end bool, values []T) bool {
+func newTestDumper[T any](t testing.TB) func(prefix []byte, level uint32, end bool, values []T) bool {
 	t.Helper()
 	return newDumper[T](t.Log)
 }
@@ -611,6 +611,8 @@ func ExampleIterator_Remove() {
 	t.Insert(1, false, []byte("Pavlov"), []byte("Ivan"))
 	t.Insert(3, false, []byte("Petrov"), []byte("Ivan"))
 
+	fmt.Println("INSERT [Pavlova, Zinaida][Pavlov, Ivan][Petrov, Ivan]")
+
 	t.Dump(newDumper[int]())
 
 	i := t.Search([]byte("Pavlov"))
@@ -664,7 +666,72 @@ func ExampleIterator_Remove() {
 
 	t.Dump(newDumper[int]())
 
+	t.Insert(1, false, []byte("Pavlov"), []byte("Ivan"))
+	t.Insert(8, false, []byte("Pavlova"), []byte("Zinaida"))
+	t.Insert(5, false, []byte("Pavlova"))
+
+	fmt.Println("INSERT [Pavlov, Ivan][Pavlova, Zinaida][Pavlova]")
+
+	t.Dump(newDumper[int]())
+
+	i = t.Search([]byte("Pavlova"), []byte("Zinaida"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 8:
+			fmt.Println("REMOVE [Pavlova, Zinaida]")
+		default:
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
+	t.Insert(8, false, []byte("Pavlova"), []byte("Zinaida"))
+
+	fmt.Println("INSERT [Pavlova, Zinaida]")
+
+	t.Dump(newDumper[int]())
+
+	i = t.Search([]byte("Pavlova"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 5:
+			fmt.Println("REMOVE [Pavlova]")
+		default:
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
+	t.Insert(5, false, []byte("Pavlova"))
+
+	fmt.Println("INSERT [Pavlova]")
+
+	t.Dump(newDumper[int]())
+
+	i = t.Search([]byte("Pavlova"))
+	for i.Next() {
+		got := i.Get()
+		switch got[0] {
+		case 5:
+			fmt.Println("REMOVE [Pavlova]")
+		case 8:
+			fmt.Println("REMOVE [Pavlova, Zinaida]")
+		default:
+			continue
+		}
+		i.Remove()
+	}
+
+	t.Dump(newDumper[int]())
+
 	// Output:
+	// INSERT [Pavlova, Zinaida][Pavlov, Ivan][Petrov, Ivan]
 	// ┬
 	// └──[P]:"P"
 	//    ├──[a]:"avlov"
@@ -702,6 +769,50 @@ func ExampleIterator_Remove() {
 	// REMOVE [Pavlova, Zinaida]
 	// REMOVE [Petrov, Ivan]
 	// ┬
+	// INSERT [Pavlov, Ivan][Pavlova, Zinaida][Pavlova]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    ├──[a]:"a" = [5]
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
+	// REMOVE [Pavlova, Zinaida]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    ├──[a]:"a" = [5]
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
+	// INSERT [Pavlova, Zinaida]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    ├──[a]:"a" = [5]
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
+	// REMOVE [Pavlova]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    ├──[a]:"a"
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
+	// INSERT [Pavlova]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    ├──[a]:"a" = [5]
+	//    │  └─»┬
+	//    │     └──[Z]:"Zinaida" = [8]
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
+	// REMOVE [Pavlova]
+	// REMOVE [Pavlova, Zinaida]
+	// ┬
+	// └──[P]:"Pavlov"
+	//    └─»┬
+	//       └──[I]:"Ivan" = [1]
 	//
 }
 

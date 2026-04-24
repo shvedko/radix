@@ -2,6 +2,7 @@ package radix
 
 import (
 	"math/bits"
+	"sort"
 )
 
 type bits256 [4]uint64
@@ -373,10 +374,15 @@ func (t *Iterator[T]) Remove(indices ...int) {
 	if len(indices) == 0 {
 		n.n.values = nil
 	} else {
-		// Удаляем по индексам.
-		// Важно: если индексов несколько, их нужно удалять с конца,
-		// чтобы не "поплыли" индексы оставшихся элементов.
-		// TODO
+		sort.Sort(sort.Reverse(sort.IntSlice(indices)))
+		var deleted int
+		for j, index := range indices {
+			if j > 0 && index == deleted {
+				continue
+			}
+			deleted = index
+			n.n.values = append(n.n.values[:index], n.n.values[index+1:]...)
+		}
 	}
 
 	for n.n.empty() && i > 0 {
