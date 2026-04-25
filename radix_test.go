@@ -508,98 +508,8 @@ func TestRadix_Search(t *testing.T) {
 	}
 }
 
-func BenchmarkRadix_100(b *testing.B) {
-	t := radix.New[int]()
-
-	for i := 0; i < 100; i++ {
-		s := strconv.Itoa(i)
-		c := strconv.Itoa(i % 8)
-		t.Insert(i, false, []byte("City"+c), []byte("Street"+s))
-	}
-
-	d := func([]byte, uint32, bool, []int) bool { return true }
-
-	b.ResetTimer()
-
-	b.Run("Dump", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			t.Dump(d)
-		}
-	})
-
-	b.Run("Walk", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			t.Walk(d)
-		}
-	})
-
-	b.Run("Point", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			n := 0
-			y := t.Search([]byte("City1"), []byte("Street41"))
-			for y.Next() {
-				v := y.Get()
-				if len(v) != 1 || v[0] != 41 {
-					b.Fatal(v)
-				}
-				n++
-			}
-			if n != 1 {
-				b.Fatal(n, "!=", 1)
-			}
-		}
-	})
-
-	b.Run("Prefix", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			n := 0
-			y := t.Search([]byte("City7"), []byte("Street7"))
-			for y.Next() {
-				v := y.Get()
-				if len(v) != 1 {
-					b.Fatal(v, 1)
-				} else if v[0] > 7 && v[0]/10 != 7 {
-					b.Fatal(v, 2)
-				} else if v[0] < 8 && v[0] != 7 {
-					b.Fatal(v, 3)
-				}
-				n++
-			}
-			if n != 3 {
-				b.Fatal(n, "!=", 3)
-			}
-		}
-	})
-
-	b.Run("Deep", func(b *testing.B) {
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			n := 0
-			y := t.Search(nil, []byte("Street7"))
-			for y.Next() {
-				v := y.Get()
-				if len(v) != 1 {
-					b.Fatal(v, 1)
-				} else if v[0] > 7 && v[0]/10 != 7 {
-					b.Fatal(v, 2)
-				} else if v[0] < 8 && v[0] != 7 {
-					b.Fatal(v, 3)
-				}
-				n++
-			}
-			if n != 11 {
-				b.Fatal(n, "!=", 11)
-			}
-		}
-	})
-}
-
 func TestIterator_Next(t *testing.T) {
-	if radix.New[int]().Search().Next() {
+	if i := radix.New[int]().Search(); i.Next() {
 		t.Fatal(0)
 	}
 }
@@ -852,4 +762,123 @@ func ExampleIterator_Remove_mergeLongerPrefix() {
 	// Found: [1]
 	// Found after remove: [2]
 	//
+}
+
+func BenchmarkRadix_100(b *testing.B) {
+	t := radix.New[int]()
+
+	k := make([][]byte, 0, 200)
+	for j := 0; j < 100; j++ {
+		s := strconv.Itoa(j)
+		c := strconv.Itoa(j % 8)
+		k = append(k, []byte("City"+c), []byte("Street"+s))
+		t.Insert(j, true, k[j*2], k[j*2+1])
+	}
+
+	d := func([]byte, uint32, bool, []int) bool { return true }
+
+	b.ResetTimer()
+
+	b.Run("Search", func(b *testing.B) {
+
+		b.Run("Point", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				n := 0
+				j := 49
+				y := t.Search(k[j*2], k[j*2+1])
+				for y.Next() {
+					v := y.Get()
+					if len(v) != 1 || v[0] != 49 {
+						b.Fatal(v)
+					}
+					n++
+				}
+				if n != 1 {
+					b.Fatal(n, "!=", 1)
+				}
+			}
+		})
+
+		b.Run("Prefix", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				n := 0
+				j := 7
+				y := t.Search(k[j*2], k[j*2+1])
+				for y.Next() {
+					v := y.Get()
+					if len(v) != 1 {
+						b.Fatal(v, 1)
+					} else if v[0] > 7 && v[0]/10 != 7 {
+						b.Fatal(v, 2)
+					} else if v[0] < 8 && v[0] != 7 {
+						b.Fatal(v, 3)
+					}
+					n++
+				}
+				if n != 3 {
+					b.Fatal(n, "!=", 3)
+				}
+			}
+		})
+
+		b.Run("Deep", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				n := 0
+				j := 7
+				y := t.Search(nil, k[j*2+1])
+				for y.Next() {
+					v := y.Get()
+					if len(v) != 1 {
+						b.Fatal(v, 1)
+					} else if v[0] > 7 && v[0]/10 != 7 {
+						b.Fatal(v, 2)
+					} else if v[0] < 8 && v[0] != 7 {
+						b.Fatal(v, 3)
+					}
+					n++
+				}
+				if n != 11 {
+					b.Fatal(n, "!=", 11)
+				}
+			}
+		})
+	})
+
+	b.Run("Insert/Delete", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			j := 49
+			_, ok := t.Insert(100, true, k[j*2], k[j*2+1])
+			if ok {
+				b.Fatal(ok)
+			}
+		}
+	})
+
+	b.Run("Dump", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			t.Dump(d)
+		}
+	})
+
+	b.Run("Walk", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			t.Walk(d)
+		}
+	})
+}
+
+func TestRadix_Insert(t *testing.T) {
+	r := radix.New[int]()
+	r.Insert(88, false, []byte("City0"), []byte("Street88"))
+	r.Insert(80, false, []byte("City0"), []byte("Street80"))
+	i, ok := r.Insert(8, false, []byte("City0"), []byte("Street8"))
+	if !ok {
+		t.Fatal(8)
+	}
+	j := r.Search([]byte("City0"), []byte("Street8"))
+	j.Next()
+	if !reflect.DeepEqual(i, j) {
+		t.Error(i)
+		t.Fatal(j)
+	}
 }

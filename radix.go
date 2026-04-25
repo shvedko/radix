@@ -53,7 +53,7 @@ func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 	return true, i, false
 }
 
-func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
+func (n *Radix[T]) insert(prefix []byte, frames []frame[T]) ([]frame[T], *Radix[T]) {
 	p := n
 	for len(prefix) > 0 {
 		b := prefix[0]
@@ -64,7 +64,7 @@ func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
 			p.children[i] = &Radix[T]{prefix: prefix}
-			return p.children[i]
+			//			return frames, p.children[i]
 		}
 
 		p = p.children[i]
@@ -73,9 +73,10 @@ func (n *Radix[T]) insert(prefix []byte) *Radix[T] {
 			p.split(size)
 		}
 
+		frames = append(frames, frame[T]{n: p})
 		prefix = prefix[size:]
 	}
-	return p
+	return frames, p
 }
 
 func (n *Radix[T]) common(prefix []byte) int {
@@ -102,31 +103,32 @@ func (n *Radix[T]) split(size int) {
 	n.next = nil
 }
 
-func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
+func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T], bool) {
 	if len(prefixes) == 0 {
-		return false
+		return nil, false
 	}
 
+	frames := (&[8]frame[T]{{n: n}})[:1]
 	p := n
 
-	for i, prefix := range prefixes {
-		p = p.insert(prefix)
-
-		if i < len(prefixes)-1 {
-			if p.next == nil {
-				p.next = &Radix[T]{}
-			}
-			p = p.next
+	var i int
+	for i = 0; i < len(prefixes)-1; i++ {
+		frames, p = p.insert(prefixes[i], frames)
+		if p.next == nil {
+			p.next = &Radix[T]{}
 		}
+		p = p.next
+		frames = append(frames, frame[T]{n: p})
 	}
+	frames, p = p.insert(prefixes[i], frames)
 
 	if unique && len(p.values) > 0 {
-		return false
+		return nil, false
 	}
 
 	p.values = append(p.values, value)
 
-	return true
+	return &Iterator[T]{frames: frames, prefixes: prefixes}, true
 }
 
 type dumper[T any] func(prefix []byte, level uint32, end bool, values []T) bool
@@ -362,6 +364,10 @@ func (t *Iterator[T]) Get() []T {
 		return nil
 	}
 	return t.frames[len(t.frames)-1].n.values
+}
+
+func (t *Iterator[T]) Rollback() {
+
 }
 
 func (t *Iterator[T]) Remove(indices ...int) {
