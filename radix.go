@@ -56,33 +56,41 @@ func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode uint8) ([]frame[T], *Radix[T]) {
 	p := n
 
-	var (
-		offset uint32
-		k      uint8
-	)
-
+	var offset uint32
 	for len(prefix) > 0 {
-		b := prefix[0]
+		var e1, e2, e3 uint8
 
+		b := prefix[0]
 		i := p.index.num(b)
 		if !p.index.has(b) {
 			p.index.set(b)
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
 			p.children[i] = &Radix[T]{prefix: prefix}
+			e1 = mode
 		}
 
-		k = 0
 		p = p.children[i]
 		size := p.common(prefix)
 		if size < len(p.prefix) {
 			p.split(size)
-			k = 1
+			e2 = mode
+		} else {
+			e3 = mode
 		}
 
 		offset += uint32(size)
 		prefix = prefix[size:]
-		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + k, offset: offset})
+
+		var fix uint8
+		switch e1*100 + e2*10 + e3 {
+		case 20:
+			fix = 1
+		case 1, 10:
+			fix = 2
+		}
+
+		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + fix, offset: offset})
 	}
 
 	return frames, p
