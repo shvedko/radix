@@ -103,12 +103,11 @@ func main() {
 
 ```
 cpu: 11th Gen Intel(R) Core(TM) i7-11700F @ 2.50GHz
-BenchmarkRadix_100/Dump-16               2675503               445.9 ns/op             0 B/op          0 allocs/op
-BenchmarkRadix_100/Walk-16               2512437               474.2 ns/op             0 B/op          0 allocs/op
-BenchmarkRadix_100/Point-16              4955932               238.1 ns/op           304 B/op          7 allocs/op
-BenchmarkRadix_100/Prefix-16             4480737               270.0 ns/op           304 B/op          7 allocs/op
-BenchmarkRadix_100/Deep-16               1654500               730.4 ns/op           296 B/op          6 allocs/op
-PASS
+BenchmarkRadix_100/Dump-16               2638279               454.0 ns/op             0 B/op          0 allocs/op
+BenchmarkRadix_100/Walk-16               2554234               467.5 ns/op             0 B/op          0 allocs/op
+BenchmarkRadix_100/Point-16              6633674               179.0 ns/op           192 B/op          4 allocs/op
+BenchmarkRadix_100/Prefix-16             5523348               202.9 ns/op           192 B/op          4 allocs/op
+BenchmarkRadix_100/Deep-16               1825437               646.0 ns/op           184 B/op          3 allocs/op
 ```
 
 ## ⚠️ Важно

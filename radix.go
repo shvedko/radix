@@ -1,6 +1,7 @@
 package radix
 
 import (
+	"bytes"
 	"math/bits"
 	"sort"
 )
@@ -217,8 +218,8 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 
 func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
 	return &Iterator[T]{
-		frames:   []frame[T]{{n: n}},
 		prefixes: prefixes,
+		frames:   (&[8]frame[T]{{n: n}})[:1],
 	}
 }
 
@@ -403,7 +404,18 @@ func (t *Iterator[T]) Remove(indices ...int) {
 func (n *Radix[T]) merge() {
 	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
 		c := n.children[0]
-		n.prefix = append(n.prefix, c.prefix...)
+
+		pLen := len(n.prefix)
+		cLen := len(c.prefix)
+		pCap := cap(n.prefix)
+		fLen := pLen + cLen
+
+		if fLen <= pCap && (&n.prefix[:pCap][pLen] == &c.prefix[0] || bytes.Equal(c.prefix, n.prefix[pLen:fLen])) {
+			n.prefix = n.prefix[:fLen]
+		} else {
+			n.prefix = append(n.prefix[:pLen:pLen], c.prefix...)
+		}
+
 		n.index = c.index
 		n.children = c.children
 		n.values = c.values
