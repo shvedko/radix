@@ -53,8 +53,14 @@ func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 	return true, i, false
 }
 
-func (n *Radix[T]) insert(prefix []byte, frames []frame[T]) ([]frame[T], *Radix[T]) {
+func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode uint8) ([]frame[T], *Radix[T]) {
 	p := n
+
+	var (
+		offset uint32
+		k      uint8
+	)
+
 	for len(prefix) > 0 {
 		b := prefix[0]
 
@@ -64,18 +70,21 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T]) ([]frame[T], *Radix[
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
 			p.children[i] = &Radix[T]{prefix: prefix}
-			//			return frames, p.children[i]
 		}
 
+		k = 0
 		p = p.children[i]
 		size := p.common(prefix)
 		if size < len(p.prefix) {
 			p.split(size)
+			k = 1
 		}
 
-		frames = append(frames, frame[T]{n: p})
+		offset += uint32(size)
 		prefix = prefix[size:]
+		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + k, offset: offset})
 	}
+
 	return frames, p
 }
 
@@ -108,19 +117,20 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 		return nil, false
 	}
 
-	frames := (&[8]frame[T]{{n: n}})[:1]
+	frames := (&[8]frame[T]{{n: n, mode: 3}})[:1]
 	p := n
 
-	var i int
-	for i = 0; i < len(prefixes)-1; i++ {
-		frames, p = p.insert(prefixes[i], frames)
+	var i uint16
+	for i < uint16(len(prefixes)-1) {
+		frames, p = p.insert(prefixes[i], frames, i, 2)
 		if p.next == nil {
 			p.next = &Radix[T]{}
 		}
 		p = p.next
-		frames = append(frames, frame[T]{n: p})
+		i++
+		frames = append(frames, frame[T]{n: p, layer: i, mode: 3})
 	}
-	frames, p = p.insert(prefixes[i], frames)
+	frames, p = p.insert(prefixes[i], frames, i, 1)
 
 	if unique && len(p.values) > 0 {
 		return nil, false
@@ -366,9 +376,7 @@ func (t *Iterator[T]) Get() []T {
 	return t.frames[len(t.frames)-1].n.values
 }
 
-func (t *Iterator[T]) Rollback() {
-
-}
+func (t *Iterator[T]) Rollback() { t.Remove(len(t.Get()) - 1) }
 
 func (t *Iterator[T]) Remove(indices ...int) {
 	if len(t.frames) == 0 {

@@ -868,17 +868,38 @@ func BenchmarkRadix_100(b *testing.B) {
 }
 
 func TestRadix_Insert(t *testing.T) {
-	r := radix.New[int]()
-	r.Insert(88, false, []byte("City0"), []byte("Street88"))
-	r.Insert(80, false, []byte("City0"), []byte("Street80"))
-	i, ok := r.Insert(8, false, []byte("City0"), []byte("Street8"))
+	r := radix.New[float64]()
+
+	i, ok := r.Insert(88, false, []byte("City0"), []byte("Street88"), []byte{1})
 	if !ok {
-		t.Fatal(8)
+		t.Fatal()
 	}
-	j := r.Search([]byte("City0"), []byte("Street8"))
+	j := r.Search([]byte("City0"), []byte("Street88"), []byte{1})
 	j.Next()
 	if !reflect.DeepEqual(i, j) {
 		t.Error(i)
-		t.Fatal(j)
+		t.Error(j)
+	}
+
+	i, ok = r.Insert(80, false, []byte("City0"), []byte("Street80"), []byte{1})
+	if !ok {
+		t.Fatal()
+	}
+	j = r.Search([]byte("City0"), []byte("Street80"), []byte{1})
+	j.Next()
+	if !reflect.DeepEqual(i, j) {
+		t.Error(i)
+		t.Error(j)
+	}
+
+	i, ok = r.Insert(8, false, []byte("City0"), []byte("Street8"), []byte{1})
+	if !ok {
+		t.Fatal()
+	}
+	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1})
+	j.Next()
+	if !reflect.DeepEqual(i, j) {
+		t.Error(i)
+		t.Error(j)
 	}
 }
