@@ -210,9 +210,9 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
 	return true
 }
 
-func (n *Radix[T]) InsertPath(value T, unique bool, prefixes ...[]byte) (*Iterator[T], bool) {
+func (n *Radix[T]) InsertPath(value T, unique bool, prefixes ...[]byte) (Iterator[T], bool) {
 	if len(prefixes) == 0 {
-		return nil, false
+		return Iterator[T]{}, false
 	}
 
 	p := n
@@ -232,12 +232,12 @@ func (n *Radix[T]) InsertPath(value T, unique bool, prefixes ...[]byte) (*Iterat
 	frames, p = p.insert(prefixes[i], frames, i, 1)
 
 	if unique && len(p.values) > 0 {
-		return nil, false
+		return Iterator[T]{}, false
 	}
 
 	p.values = append(p.values, value)
 
-	return &Iterator[T]{frames: frames, prefixes: prefixes}, true
+	return Iterator[T]{frames: frames, prefixes: prefixes}, true
 }
 
 type dumper[T any] func(prefix []byte, level uint32, end bool, values []T) bool
@@ -327,8 +327,8 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 	return true
 }
 
-func (n *Radix[T]) Search(prefixes ...[]byte) *Iterator[T] {
-	return &Iterator[T]{
+func (n *Radix[T]) Search(prefixes ...[]byte) Iterator[T] {
+	return Iterator[T]{
 		prefixes: prefixes,
 		frames:   (&[8]frame[T]{{n: n}})[:1],
 	}
@@ -358,6 +358,7 @@ type frame[T any] struct {
 type Iterator[T any] struct {
 	frames   []frame[T]
 	prefixes [][]byte
+	static   [8]frame[T]
 }
 
 func (t *Iterator[T]) Next() bool {

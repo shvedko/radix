@@ -958,7 +958,8 @@ func TestRadix_InsertPath(t *testing.T) {
 
 	i.Remove()
 
-	ok = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2}).Next()
+	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2})
+	ok = j.Next()
 	if ok {
 		t.Fatal()
 	}
