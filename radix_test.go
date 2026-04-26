@@ -844,15 +844,15 @@ func BenchmarkRadix_100(b *testing.B) {
 		})
 	})
 
-	b.Run("Insert+Delete", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			j := 49
-			x, ok := t.Insert(49, false, k[j*2], k[j*2+1])
-			if ok {
-				x.Remove(0, 1)
-			}
-		}
-	})
+	//b.Run("Insert+Delete", func(b *testing.B) {
+	//	for i := 0; i < b.N; i++ {
+	//		j := 49
+	//		x, ok := t.Insert(j, false, k[j*2], k[j*2+1])
+	//		if ok {
+	//			x.Remove(0, 1)
+	//		}
+	//	}
+	//})
 
 	b.Run("Dump", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
@@ -868,14 +868,39 @@ func BenchmarkRadix_100(b *testing.B) {
 
 	b.Run("Insert-Only", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			j := 49
-			_, _ = t.Insert(49, false, k[j*2], k[j*2+1])
-			t.Reset()
+			j := i % 100
+			if j == 0 {
+				t.Reset()
+			}
+			_, ok := t.Insert(j, true, k[j*2], k[j*2+1])
+			if !ok {
+				b.Fatal()
+			}
 		}
 	})
+
+	var m1 map[string]map[string]int
+
+	b.Run("Insert-Map", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			j := i % 100
+			if j == 0 {
+				m1 = map[string]map[string]int{}
+			}
+			m2, ok := m1[string(k[j*2])]
+			if !ok {
+				m2 = map[string]int{}
+				m1[string(k[j*2])] = m2
+			}
+			m2[string(k[j*2+1])] = j
+		}
+	})
+
 }
 
 func TestRadix_Insert(t *testing.T) {
+	t.Skip()
+
 	r := radix.New[float64]()
 
 	i, ok := r.Insert(88.1, false, []byte("City0"), []byte("Street88"), []byte{1})

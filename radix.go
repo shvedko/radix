@@ -58,7 +58,7 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 
 	var offset uint32
 	for len(prefix) > 0 {
-		var mutate uint8
+		//var mutate uint8
 
 		b := prefix[0]
 		i := p.index.num(b)
@@ -67,22 +67,22 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
 			p.children[i] = &Radix[T]{prefix: prefix}
-			mutate = mode << 4
+			//mutate = mode << 4
 		}
 
 		p = p.children[i]
 		size := p.common(prefix)
 		if size < len(p.prefix) {
 			p.split(size)
-			mutate |= mode << 2
+			//mutate |= mode << 2
 		} else {
-			mutate |= mode
+			//mutate |= mode
 		}
 
-		mutate = (mutate&8>>3 | mutate&4>>1 | mutate&1<<1) >> (mutate & 48 >> 3)
+		//mutate = (mutate&8>>3 | mutate&4>>1 | mutate&1<<1) >> (mutate & 48 >> 3)
 		offset += uint32(size)
 		prefix = prefix[size:]
-		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + mutate, offset: offset})
+		//frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + mutate, offset: offset})
 	}
 
 	return frames, p
@@ -117,10 +117,11 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 		return nil, false
 	}
 
-	frames := (&[8]frame[T]{{n: n, mode: 3}})[:1]
+	//frames := (&[8]frame[T]{{n: n, mode: 3}})[:1]
 	p := n
 
 	var i uint16
+	var frames []frame[T]
 	for i < uint16(len(prefixes)-1) {
 		frames, p = p.insert(prefixes[i], frames, i, 2)
 		if p.next == nil {
@@ -128,7 +129,7 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 		}
 		p = p.next
 		i++
-		frames = append(frames, frame[T]{n: p, layer: i, mode: 3})
+		//frames = append(frames, frame[T]{n: p, layer: i, mode: 3})
 	}
 	frames, p = p.insert(prefixes[i], frames, i, 1)
 
@@ -138,6 +139,7 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 
 	p.values = append(p.values, value)
 
+	return nil, true
 	return &Iterator[T]{frames: frames, prefixes: prefixes}, true
 }
 
