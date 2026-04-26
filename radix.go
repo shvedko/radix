@@ -23,15 +23,78 @@ func (b *bits256) num(i uint8) int {
 	return n
 }
 
+const pageSize = 64
+
+type pool[T any] struct {
+	pages [][]Radix[T]
+	nodes []*Radix[T]
+}
+
+func (p *pool[T]) grow() {
+	if cap(p.nodes) < pageSize {
+		p.nodes = make([]*Radix[T], 0, pageSize)
+	}
+
+	page := make([]Radix[T], pageSize)
+	p.pages = append(p.pages, page)
+
+	for i := range page {
+		p.nodes = append(p.nodes, &page[i])
+	}
+}
+
+func (p *pool[T]) get() *Radix[T] {
+	if len(p.nodes) == 0 {
+		p.grow()
+	}
+
+	n := p.nodes[len(p.nodes)-1]
+	p.nodes = p.nodes[:len(p.nodes)-1]
+	n.pool = p
+
+	return n
+}
+
+func (p *pool[T]) put(n *Radix[T]) {
+	n.prefix = nil
+	n.index = bits256{}
+	if cap(n.children) > 64 {
+		n.children = nil
+	} else {
+		n.children = n.children[:0]
+	}
+	n.values = n.values[:0]
+	n.next = nil
+	n.pool = p
+
+	p.nodes = append(p.nodes, n)
+}
+
+func (p *pool[T]) reset() {
+	p.nodes = p.nodes[:0]
+
+	var zero T
+	for i := range p.pages {
+		for j := range p.pages[i] {
+			n := &p.pages[i][j]
+			for v := range n.values {
+				n.values[v] = zero
+			}
+			p.put(n)
+		}
+	}
+}
+
 type Radix[T any] struct {
 	prefix   []byte
 	index    bits256
 	children []*Radix[T]
 	next     *Radix[T]
 	values   []T
+	pool     *pool[T]
 }
 
-func New[T any]() *Radix[T] { return &Radix[T]{} }
+func New[T any]() *Radix[T] { return &Radix[T]{pool: &pool[T]{}} }
 
 func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 	if len(prefix) == 0 {
@@ -66,7 +129,9 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 			p.index.set(b)
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
-			p.children[i] = &Radix[T]{prefix: prefix}
+			c := n.pool.get()
+			p.children[i] = c
+			p.children[i].prefix = prefix
 			mutate = mode << 4
 		}
 
@@ -104,18 +169,17 @@ func (n *Radix[T]) common(prefix []byte) int {
 }
 
 func (n *Radix[T]) split(size int) {
-	c := &Radix[T]{
-		prefix:   n.prefix[size:],
-		children: n.children,
-		index:    n.index,
-		next:     n.next,
-		values:   n.values,
-	}
-	n.children = []*Radix[T]{c}
+	c := n.pool.get()
+	c.prefix = n.prefix[size:]
+	c.index = n.index
+	c.next = n.next
+
+	c.values, n.values = n.values, c.values
+	c.children, n.children = n.children, append(c.children[:0], c)
+
+	n.prefix = n.prefix[:size]
 	n.index = bits256{}
 	n.index.set(c.prefix[0])
-	n.prefix = n.prefix[:size]
-	n.values = nil
 	n.next = nil
 }
 
@@ -130,7 +194,7 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
 	for i < uint16(len(prefixes)-1) {
 		_, p = p.insert(prefixes[i], nil, i, 2)
 		if p.next == nil {
-			p.next = &Radix[T]{}
+			p.next = p.pool.get()
 		}
 		p = p.next
 		i++
@@ -159,7 +223,7 @@ func (n *Radix[T]) InsertPath(value T, unique bool, prefixes ...[]byte) (*Iterat
 	for i < uint16(len(prefixes)-1) {
 		frames, p = p.insert(prefixes[i], frames, i, 2)
 		if p.next == nil {
-			p.next = &Radix[T]{}
+			p.next = n.pool.get()
 		}
 		p = p.next
 		i++
@@ -420,9 +484,10 @@ func (t *Iterator[T]) Remove(indices ...int) {
 	n := &t.frames[i]
 
 	if len(indices) == 0 {
-		n.n.values = nil
+		n.n.values = n.n.values[:0]
 	} else {
 		sort.Sort(sort.Reverse(sort.IntSlice(indices)))
+		var zero T
 		var deleted int
 		for j, index := range indices {
 			if j > 0 && index == deleted {
@@ -432,6 +497,7 @@ func (t *Iterator[T]) Remove(indices ...int) {
 				continue
 			}
 			deleted = index
+			n.n.values[index] = zero
 			n.n.values = append(n.n.values[:index], n.n.values[index+1:]...)
 		}
 	}
@@ -467,9 +533,11 @@ func (n *Radix[T]) merge() {
 		}
 
 		n.index = c.index
-		n.children = c.children
-		n.values = c.values
+		n.children, c.children = c.children, n.children
+		n.values, c.values = c.values, n.values
 		n.next = c.next
+
+		n.pool.put(c)
 	}
 }
 
@@ -480,15 +548,16 @@ func (n *Radix[T]) empty() bool {
 func (n *Radix[T]) remove(c uint8) {
 	i := n.index.num(c)
 	n.index.pop(c)
-	copy(n.children[i:], n.children[i+1:])
-	n.children[len(n.children)-1] = nil
-	n.children = n.children[:len(n.children)-1]
+	n.pool.put(n.children[i])
+	i += copy(n.children[i:], n.children[i+1:])
+	n.children = n.children[:i]
 }
 
 func (n *Radix[T]) Reset() {
-	n.prefix = n.prefix[:0]
+	n.prefix = nil
 	n.children = n.children[:0]
 	n.index = bits256{}
-	n.values = nil
+	n.values = n.values[:0]
 	n.next = nil
+	n.pool.reset()
 }
