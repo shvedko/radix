@@ -842,6 +842,13 @@ func BenchmarkRadix_100(b *testing.B) {
 				}
 			}
 		})
+
+		b.Run("First", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				y := t.Search()
+				y.Next()
+			}
+		})
 	})
 
 	b.Run("Dump", func(b *testing.B) {

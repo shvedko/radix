@@ -358,7 +358,6 @@ type frame[T any] struct {
 type Iterator[T any] struct {
 	frames   []frame[T]
 	prefixes [][]byte
-	static   [8]frame[T]
 }
 
 func (t *Iterator[T]) Next() bool {
