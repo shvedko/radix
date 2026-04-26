@@ -112,7 +112,7 @@ cpu: 11th Gen Intel(R) Core(TM) i7-11700F @ 2.50GHz
 BenchmarkRadix_100/Search/First-16      12043537                87.58 ns/op          128 B/op          1 allocs/op
 BenchmarkRadix_100/Search/Point-16       7284444               169.4 ns/op           176 B/op          2 allocs/op
 BenchmarkRadix_100/Search/Prefix-16      6393817               188.5 ns/op           176 B/op          2 allocs/op
-BenchmarkRadix_100/Search/Deep-16        1872069               636.7 ns/op           176 B/op          2 allocs/op
+BenchmarkRadix_100/Search/Scan-16        1872069               636.7 ns/op           176 B/op          2 allocs/op
 BenchmarkRadix_100/Dump-16               2655260               451.4 ns/op             0 B/op          0 allocs/op
 BenchmarkRadix_100/Walk-16               2595984               461.4 ns/op             0 B/op          0 allocs/op
 BenchmarkRadix_100/Insert-Delete-16      7764678               152.0 ns/op           178 B/op          2 allocs/op

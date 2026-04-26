@@ -828,7 +828,7 @@ func BenchmarkRadix_100(b *testing.B) {
 			}
 		})
 
-		b.Run("Deep", func(b *testing.B) {
+		b.Run("Scan", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				n := 0
 				j := 7
