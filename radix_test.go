@@ -869,20 +869,20 @@ func BenchmarkRadix_100(b *testing.B) {
 			y[j] = t.Search(k[j*2], k[j*2+1])
 			y[j].Next()
 		}
-		b.ResetTimer()
-
 		var ok bool
-		for i := 0; i < b.N; i++ {
-			j := i % 100
+		var j int
+		for b.Loop() {
 			v := y[j].Get()
 			if len(v) != 1 || v[0] != j {
-				b.Fatal(i, j, len(v), "!=", 1, v[0])
+				b.Fatal(j, len(v), "!=", v[0], 1)
 			}
 			y[j].Remove()
 			y[j], ok = t.InsertPath(j, false, k[j*2], k[j*2+1])
 			if !ok {
 				b.Fatal()
 			}
+			j++
+			j %= 100
 		}
 	})
 
