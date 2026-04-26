@@ -844,15 +844,16 @@ func BenchmarkRadix_100(b *testing.B) {
 		})
 	})
 
-	//b.Run("Insert+Delete", func(b *testing.B) {
-	//	for i := 0; i < b.N; i++ {
-	//		j := 49
-	//		x, ok := t.Insert(j, false, k[j*2], k[j*2+1])
-	//		if ok {
-	//			x.Remove(0, 1)
-	//		}
-	//	}
-	//})
+	b.Run("Insert+Delete", func(b *testing.B) {
+		b.Skip()
+		for i := 0; i < b.N; i++ {
+			j := 49
+			x, ok := t.Insert(j, false, k[j*2], k[j*2+1])
+			if ok {
+				x.Remove(0, 1)
+			}
+		}
+	})
 
 	b.Run("Dump", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
