@@ -844,17 +844,6 @@ func BenchmarkRadix_100(b *testing.B) {
 		})
 	})
 
-	b.Run("Insert+Delete", func(b *testing.B) {
-		b.Skip()
-		for i := 0; i < b.N; i++ {
-			j := 49
-			x, ok := t.Insert(j, false, k[j*2], k[j*2+1])
-			if ok {
-				x.Remove(0, 1)
-			}
-		}
-	})
-
 	b.Run("Dump", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			t.Dump(d)
@@ -867,13 +856,23 @@ func BenchmarkRadix_100(b *testing.B) {
 		}
 	})
 
+	b.Run("Insert-Delete", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			j := 49
+			y, ok := t.InsertPath(j, false, k[j*2], k[j*2+1])
+			if ok {
+				y.Remove(0, 1)
+			}
+		}
+	})
+
 	b.Run("Insert-Only", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			j := i % 100
 			if j == 0 {
 				t.Reset()
 			}
-			_, ok := t.Insert(j, true, k[j*2], k[j*2+1])
+			ok := t.Insert(j, true, k[j*2], k[j*2+1])
 			if !ok {
 				b.Fatal()
 			}
@@ -899,12 +898,10 @@ func BenchmarkRadix_100(b *testing.B) {
 
 }
 
-func TestRadix_Insert(t *testing.T) {
-	t.Skip()
-
+func TestRadix_InsertPath(t *testing.T) {
 	r := radix.New[float64]()
 
-	i, ok := r.Insert(88.1, false, []byte("City0"), []byte("Street88"), []byte{1})
+	i, ok := r.InsertPath(88.1, false, []byte("City0"), []byte("Street88"), []byte{1})
 	if !ok {
 		t.Fatal()
 	}
@@ -915,7 +912,7 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
-	i, ok = r.Insert(80.2, false, []byte("City0"), []byte("Street80"), []byte{2})
+	i, ok = r.InsertPath(80.2, false, []byte("City0"), []byte("Street80"), []byte{2})
 	if !ok {
 		t.Fatal()
 	}
@@ -926,7 +923,7 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
-	i, ok = r.Insert(8.11, false, []byte("City0"), []byte("Street8"), []byte{1, 1})
+	i, ok = r.InsertPath(8.11, false, []byte("City0"), []byte("Street8"), []byte{1, 1})
 	if !ok {
 		t.Fatal()
 	}
@@ -937,7 +934,7 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
-	i, ok = r.Insert(8.13, false, []byte("City0"), []byte("Street8"), []byte{1, 3})
+	i, ok = r.InsertPath(8.13, false, []byte("City0"), []byte("Street8"), []byte{1, 3})
 	if !ok {
 		t.Fatal()
 	}
@@ -948,7 +945,7 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
-	i, ok = r.Insert(8.12, false, []byte("City0"), []byte("Street8"), []byte{1, 2})
+	i, ok = r.InsertPath(8.12, false, []byte("City0"), []byte("Street8"), []byte{1, 2})
 	if !ok {
 		t.Fatal()
 	}
@@ -959,7 +956,7 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
-	i.Rollback()
+	i.Remove()
 
 	ok = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2}).Next()
 	if ok {

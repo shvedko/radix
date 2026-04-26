@@ -119,12 +119,11 @@ func (n *Radix[T]) split(size int) {
 	n.next = nil
 }
 
-func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T], bool) {
+func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) bool {
 	if len(prefixes) == 0 {
-		return nil, false
+		return false
 	}
 
-	//frames := (&[8]frame[T]{{n: n, mode: 3}})[:1]
 	p := n
 
 	var i uint16
@@ -135,9 +134,38 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 		}
 		p = p.next
 		i++
-		//frames = append(frames, frame[T]{n: p, layer: i, mode: 3})
 	}
 	_, p = p.insert(prefixes[i], nil, i, 1)
+
+	if unique && len(p.values) > 0 {
+		return false
+	}
+
+	p.values = append(p.values, value)
+
+	return true
+}
+
+func (n *Radix[T]) InsertPath(value T, unique bool, prefixes ...[]byte) (*Iterator[T], bool) {
+	if len(prefixes) == 0 {
+		return nil, false
+	}
+
+	p := n
+
+	frames := (&[8]frame[T]{{n: n, mode: 3}})[:1]
+
+	var i uint16
+	for i < uint16(len(prefixes)-1) {
+		frames, p = p.insert(prefixes[i], frames, i, 2)
+		if p.next == nil {
+			p.next = &Radix[T]{}
+		}
+		p = p.next
+		i++
+		frames = append(frames, frame[T]{n: p, layer: i, mode: 3})
+	}
+	frames, p = p.insert(prefixes[i], frames, i, 1)
 
 	if unique && len(p.values) > 0 {
 		return nil, false
@@ -145,8 +173,7 @@ func (n *Radix[T]) Insert(value T, unique bool, prefixes ...[]byte) (*Iterator[T
 
 	p.values = append(p.values, value)
 
-	//return &Iterator[T]{frames: frames, prefixes: prefixes}, true
-	return nil, true
+	return &Iterator[T]{frames: frames, prefixes: prefixes}, true
 }
 
 type dumper[T any] func(prefix []byte, level uint32, end bool, values []T) bool
@@ -383,8 +410,6 @@ func (t *Iterator[T]) Get() []T {
 	}
 	return t.frames[len(t.frames)-1].n.values
 }
-
-func (t *Iterator[T]) Rollback() { t.Remove(len(t.Get()) - 1) }
 
 func (t *Iterator[T]) Remove(indices ...int) {
 	if len(t.frames) == 0 {
