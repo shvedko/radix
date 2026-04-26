@@ -3,7 +3,6 @@ package radix
 import (
 	"bytes"
 	"math/bits"
-	"sort"
 )
 
 type bits256 [4]uint64
@@ -475,30 +474,42 @@ func (t *Iterator[T]) Get() []T {
 	return t.frames[len(t.frames)-1].n.values
 }
 
-func (t *Iterator[T]) Remove(indices ...int) {
+func (t *Iterator[T]) Remove() {
 	if len(t.frames) == 0 {
 		return
 	}
+	t.merge(0, 0)
+}
 
+func (t *Iterator[T]) Delete(i int) {
+	if len(t.frames) == 0 {
+		return
+	}
+	t.merge(2, i)
+}
+
+func (t *Iterator[T]) Rollback() {
+	if len(t.frames) == 0 {
+		return
+	}
+	t.merge(1, 1)
+}
+
+func (t *Iterator[T]) merge(m int, k int) {
 	i := len(t.frames) - 1
 	n := &t.frames[i]
 
-	if len(indices) == 0 {
+	switch m {
+	case 0:
 		n.n.values = n.n.values[:0]
-	} else {
-		sort.Sort(sort.Reverse(sort.IntSlice(indices)))
-		var zero T
-		var deleted int
-		for j, index := range indices {
-			if j > 0 && index == deleted {
-				continue
-			}
-			if index < 0 || index >= len(n.n.values) {
-				continue
-			}
-			deleted = index
-			n.n.values[index] = zero
-			n.n.values = append(n.n.values[:index], n.n.values[index+1:]...)
+	case 1:
+		k = len(n.n.values) - 1
+		fallthrough
+	case 2:
+		if k >= 0 && k < len(n.n.values) {
+			var zero T
+			n.n.values[k] = zero
+			n.n.values = append(n.n.values[:k], n.n.values[k+1:]...)
 		}
 	}
 
