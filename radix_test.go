@@ -844,12 +844,12 @@ func BenchmarkRadix_100(b *testing.B) {
 		})
 	})
 
-	b.Run("Insert/Delete", func(b *testing.B) {
+	b.Run("Insert+Delete", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			j := 49
-			_, ok := t.Insert(100, true, k[j*2], k[j*2+1])
+			x, ok := t.Insert(49, false, k[j*2], k[j*2+1])
 			if ok {
-				b.Fatal(ok)
+				x.Remove(0, 1)
 			}
 		}
 	})
@@ -925,4 +925,10 @@ func TestRadix_Insert(t *testing.T) {
 		t.Error(j)
 	}
 
+	i.Rollback()
+
+	ok = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2}).Next()
+	if ok {
+		t.Fatal()
+	}
 }

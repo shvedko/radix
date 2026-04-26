@@ -58,7 +58,7 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 
 	var offset uint32
 	for len(prefix) > 0 {
-		var e1, e2, e3 uint8
+		var mutate uint8
 
 		b := prefix[0]
 		i := p.index.num(b)
@@ -67,30 +67,22 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 			p.children = append(p.children, nil)
 			copy(p.children[i+1:], p.children[i:])
 			p.children[i] = &Radix[T]{prefix: prefix}
-			e1 = mode
+			mutate = mode << 4
 		}
 
 		p = p.children[i]
 		size := p.common(prefix)
 		if size < len(p.prefix) {
 			p.split(size)
-			e2 = mode
+			mutate |= mode << 2
 		} else {
-			e3 = mode
+			mutate |= mode
 		}
 
+		mutate = (mutate&8>>3 | mutate&4>>1 | mutate&1<<1) >> (mutate & 48 >> 3)
 		offset += uint32(size)
 		prefix = prefix[size:]
-
-		var fix uint8
-		switch e1*100 + e2*10 + e3 {
-		case 20:
-			fix = 1
-		case 1, 10:
-			fix = 2
-		}
-
-		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + fix, offset: offset})
+		frames = append(frames, frame[T]{n: p, layer: layer, mode: mode + mutate, offset: offset})
 	}
 
 	return frames, p
@@ -401,6 +393,9 @@ func (t *Iterator[T]) Remove(indices ...int) {
 		var deleted int
 		for j, index := range indices {
 			if j > 0 && index == deleted {
+				continue
+			}
+			if index < 0 || index >= len(n.n.values) {
 				continue
 			}
 			deleted = index
