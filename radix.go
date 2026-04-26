@@ -451,3 +451,11 @@ func (n *Radix[T]) remove(c uint8) {
 	n.children[len(n.children)-1] = nil
 	n.children = n.children[:len(n.children)-1]
 }
+
+func (n *Radix[T]) Reset() {
+	n.prefix = n.prefix[:0]
+	n.children = n.children[:0]
+	n.index = bits256{}
+	n.values = nil
+	n.next = nil
+}

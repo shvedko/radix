@@ -865,6 +865,14 @@ func BenchmarkRadix_100(b *testing.B) {
 			t.Walk(d)
 		}
 	})
+
+	b.Run("Insert-Only", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			j := 49
+			_, _ = t.Insert(49, false, k[j*2], k[j*2+1])
+			t.Reset()
+		}
+	})
 }
 
 func TestRadix_Insert(t *testing.T) {
