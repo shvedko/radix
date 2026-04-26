@@ -97,6 +97,12 @@ func main() {
 			break
 		}
 	}
+	
+	// Вставка с получением итератора на узле 
+	it, ok := t.InsertPath(1, false, []byte("Pavlov"), []byte("Ivan"))
+	if ok {
+		it.Remove() // Rollback
+	}
 ```
 
 ## 📊 Benchmarks (Intel i7-11700F)
