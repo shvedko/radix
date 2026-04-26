@@ -781,6 +781,13 @@ func BenchmarkRadix_100(b *testing.B) {
 
 	b.Run("Search", func(b *testing.B) {
 
+		b.Run("First", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				y := t.Search()
+				y.Next()
+			}
+		})
+
 		b.Run("Point", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				n := 0
@@ -842,13 +849,6 @@ func BenchmarkRadix_100(b *testing.B) {
 				}
 			}
 		})
-
-		b.Run("First", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				y := t.Search()
-				y.Next()
-			}
-		})
 	})
 
 	b.Run("Dump", func(b *testing.B) {
@@ -864,11 +864,14 @@ func BenchmarkRadix_100(b *testing.B) {
 	})
 
 	b.Run("Insert-Delete", func(b *testing.B) {
+		var y [100]radix.Iterator[int]
+		var ok bool
 		for i := 0; i < b.N; i++ {
-			j := 49
-			y, ok := t.InsertPath(j, false, k[j*2], k[j*2+1])
-			if ok {
-				y.Remove(0, 1)
+			j := i % 100
+			y[j].Remove()
+			y[j], ok = t.InsertPath(j, false, k[j*2], k[j*2+1])
+			if !ok {
+				b.Fatal()
 			}
 		}
 	})
