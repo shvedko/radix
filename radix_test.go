@@ -865,9 +865,19 @@ func BenchmarkRadix_100(b *testing.B) {
 
 	b.Run("Insert-Delete", func(b *testing.B) {
 		var y [100]radix.Iterator[int]
+		for j := 0; j < 100; j++ {
+			y[j] = t.Search(k[j*2], k[j*2+1])
+			y[j].Next()
+		}
+		b.ResetTimer()
+
 		var ok bool
 		for i := 0; i < b.N; i++ {
 			j := i % 100
+			v := y[j].Get()
+			if len(v) != 1 || v[0] != j {
+				b.Fatal(i, j, len(v), "!=", 1, v[0])
+			}
 			y[j].Remove()
 			y[j], ok = t.InsertPath(j, false, k[j*2], k[j*2+1])
 			if !ok {
@@ -889,9 +899,8 @@ func BenchmarkRadix_100(b *testing.B) {
 		}
 	})
 
-	var m1 map[string]map[string]int
-
-	b.Run("Insert-Map", func(b *testing.B) {
+	b.Run("Insert-GoMap", func(b *testing.B) {
+		var m1 map[string]map[string]int
 		for i := 0; i < b.N; i++ {
 			j := i % 100
 			if j == 0 {

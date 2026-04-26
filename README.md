@@ -117,7 +117,7 @@ BenchmarkRadix_100/Dump-16               2655260               451.4 ns/op      
 BenchmarkRadix_100/Walk-16               2595984               461.4 ns/op             0 B/op          0 allocs/op
 BenchmarkRadix_100/Insert-Delete-16      7764678               152.0 ns/op           178 B/op          2 allocs/op
 BenchmarkRadix_100/Insert-Only-16       25192300                46.94 ns/op            0 B/op          0 allocs/op
-BenchmarkRadix_100/Insert-Map-16        17790534                62.67 ns/op           68 B/op          1 allocs/op
+BenchmarkRadix_100/Insert-GoMap-16      17790534                62.67 ns/op           68 B/op          1 allocs/op
 ```
 
 ## ⚠️ Важно
