@@ -478,39 +478,40 @@ func (t *Iterator[T]) Remove() {
 	if len(t.frames) == 0 {
 		return
 	}
-	t.merge(0, 0)
+	t.merge(-2)
 }
 
-func (t *Iterator[T]) Delete(i int) {
-	if len(t.frames) == 0 {
+func (t *Iterator[T]) Delete(v int) {
+	if v < 0 || len(t.frames) == 0 {
 		return
 	}
-	t.merge(2, i)
+	t.merge(v)
 }
 
 func (t *Iterator[T]) Rollback() {
 	if len(t.frames) == 0 {
 		return
 	}
-	t.merge(1, 1)
+	t.merge(-1)
 }
 
-func (t *Iterator[T]) merge(m int, k int) {
+func (t *Iterator[T]) merge(v int) {
 	i := len(t.frames) - 1
 	n := &t.frames[i]
 
-	switch m {
-	case 0:
+	switch v {
+	case -2:
 		n.n.values = n.n.values[:0]
-	case 1:
-		k = len(n.n.values) - 1
+	case -1:
+		v += len(n.n.values)
 		fallthrough
-	case 2:
-		if k >= 0 && k < len(n.n.values) {
-			var zero T
-			n.n.values[k] = zero
-			n.n.values = append(n.n.values[:k], n.n.values[k+1:]...)
+	default:
+		if v >= len(n.n.values) {
+			return
 		}
+		var zero T
+		n.n.values[v] = zero
+		n.n.values = append(n.n.values[:v], n.n.values[v+1:]...)
 	}
 
 	for n.n.empty() && i > 0 {
