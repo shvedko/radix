@@ -27,7 +27,8 @@ package main
 
 import (
 	"fmt"
-	"radix"
+
+	"github.com/shvedko/radix"
 )
 
 func main() {

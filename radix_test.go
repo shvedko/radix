@@ -2,11 +2,12 @@ package radix_test
 
 import (
 	"fmt"
-	"radix"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/shvedko/radix"
 )
 
 func newDumper[T any](printers ...func(a ...any)) func(prefix []byte, level uint32, end bool, values []T) bool {
