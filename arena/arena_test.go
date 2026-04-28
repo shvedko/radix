@@ -292,7 +292,7 @@ func TestLinked_mark(t *testing.T) {
 	}
 }
 
-func TestLinked_findFreeInPage(t *testing.T) {
+func TestLinked_find(t *testing.T) {
 	var a Linked
 
 	pid, gid := a.alloc()
