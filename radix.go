@@ -5,12 +5,12 @@ import (
 	"math/bits"
 )
 
-type bits256 [4]uint64
+type bitset256 [4]uint64
 
-func (b *bits256) has(i uint8) bool { return b[i>>6]&(1<<(i&63)) != 0 }
-func (b *bits256) set(i uint8)      { b[i>>6] |= 1 << (i & 63) }
-func (b *bits256) pop(i uint8)      { b[i>>6] &^= 1 << (i & 63) }
-func (b *bits256) num(i uint8) int {
+func (b *bitset256) has(i uint8) bool { return b[i>>6]&(1<<(i&63)) != 0 }
+func (b *bitset256) set(i uint8)      { b[i>>6] |= 1 << (i & 63) }
+func (b *bitset256) pop(i uint8)      { b[i>>6] &^= 1 << (i & 63) }
+func (b *bitset256) num(i uint8) int {
 	k := i >> 6
 	i &= 63
 	m := uint64(1)<<i - 1
@@ -56,7 +56,7 @@ func (p *pool[T]) get() *Radix[T] {
 
 func (p *pool[T]) put(n *Radix[T]) {
 	n.prefix = nil
-	n.index = bits256{}
+	n.index = bitset256{}
 	if cap(n.children) > 64 {
 		n.children = nil
 	} else {
@@ -86,7 +86,7 @@ func (p *pool[T]) reset() {
 
 type Radix[T any] struct {
 	prefix   []byte
-	index    bits256
+	index    bitset256
 	children []*Radix[T]
 	next     *Radix[T]
 	values   []T
@@ -177,7 +177,7 @@ func (n *Radix[T]) split(size int) {
 	c.children, n.children = n.children, append(c.children[:0], c)
 
 	n.prefix = n.prefix[:size]
-	n.index = bits256{}
+	n.index = bitset256{}
 	n.index.set(c.prefix[0])
 	n.next = nil
 }
@@ -568,7 +568,7 @@ func (n *Radix[T]) remove(c uint8) {
 func (n *Radix[T]) Reset() {
 	n.prefix = nil
 	n.children = n.children[:0]
-	n.index = bits256{}
+	n.index = bitset256{}
 	n.values = n.values[:0]
 	n.next = nil
 	n.pool.reset()
