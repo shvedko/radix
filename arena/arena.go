@@ -223,19 +223,19 @@ func (a *Linked) Free(id uint64) {
 	}
 }
 
-type reader struct {
+type cursor struct {
 	a   *Linked
 	pid uint64
 	gid uint16
 	off uint8 // Остаток данных в текущей грануле (после заголовка)
 }
 
-func (a *Linked) open(id uint64) reader {
+func (a *Linked) open(id uint64) cursor {
 	pid, gid := a.unpack(id)
-	return reader{a: a, pid: pid, gid: gid}
+	return cursor{a: a, pid: pid, gid: gid}
 }
 
-func (c *reader) Read(p []byte) int {
+func (c *cursor) Read(p []byte) int {
 	var n int
 	for n < len(p) {
 		curr := &c.a.pages[c.pid][c.gid]
