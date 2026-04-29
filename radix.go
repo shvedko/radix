@@ -86,6 +86,7 @@ func (p *pool[T]) reset() {
 
 type Radix[T any] struct {
 	prefix   []byte
+	begin    int // TODO
 	index    bits256
 	children []*Radix[T]
 	next     *Radix[T]

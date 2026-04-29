@@ -1,7 +1,5 @@
 package arena
 
-/*
-
 func NewLinked(pages int) *Linked {
 	var a Linked
 	for i := 0; i < pages; i++ {
@@ -10,82 +8,7 @@ func NewLinked(pages int) *Linked {
 	return &a
 }
 
-func (a *Linked) Write1(p []byte) uint64 {
-	pid, gid := a.next(a.pid, a.gid)
-	rootID := a.pack(pid, gid)
-
-	for len(p) > 0 {
-		a.mark(pid, gid, true)
-		g := &a.pages[pid][gid]
-
-		// 1. ПРОВЕРКА НА КОНЕЦ
-		if len(p) <= 7 {
-			g[0] = 0xf0 | byte(len(p)) // 11110 + 3 бита длины
-			copy(g[1:], p)
-			return rootID
-		}
-
-		// 2. ПРОВЕРКА НА СТРИМ (Тип 0)
-		// Ищем сколько гранул впереди свободны физически подряд
-		run := 1
-		tmpP, tmpG := pid, gid
-		// Максимум 128 гранул в стриме (1 заголовочная + 127 безадресных)
-		for run < 128 && len(p) > (run*8-1) {
-			nP, nG := a.next(tmpP, tmpG+1)
-			if nP != tmpP || nG != tmpG+1 { // разрыв страницы или занято
-				break
-			}
-			run++
-			tmpP, tmpG = nP, nG
-		}
-
-		if run > 1 {
-			g[0] = byte(run - 1) // 0 + 7 бит (0..127)
-			n := copy(g[1:], p[:7])
-			p = p[n:]
-			for i := 1; i < run; i++ {
-				pid, gid = a.next(pid, gid+1)
-				a.mark(pid, gid, true)
-				n = copy(a.pages[pid][gid][:], p)
-				p = p[n:]
-			}
-			pid, gid = a.next(pid, gid+1)
-			continue
-		}
-
-		// 3. ПРЫЖКИ (Если стрим не получился)
-		nextP, nextG := a.next(pid, gid+1)
-
-		if nextP == pid {
-			diff := nextG - gid // всегда >= 1
-
-			if diff <= 64 {
-				// Тип 2: Короткий (10 + 6 бит)
-				g[0] = 0x80 | byte(diff-1)
-				n := copy(g[1:], p[:7])
-				p = p[n:]
-			} else if diff <= 4160 {
-				// Тип 3.0: 2 байта (110 + 0 + 12 бит)
-				val := uint16(diff - 65)
-				g[0] = 0xc0 | byte(val>>8)
-				g[1] = byte(val)
-				n := copy(g[2:], p[:6])
-				p = p[n:]
-			} else {
-				// Тип 3.10 / 3.11 (3-4 байта) — аналогично с bias
-				// ... (для краткости пропустим, логика та же)
-			}
-		} else {
-			// Тип 4: Jump (1110)
-			g[0] = 0xe0
-			nextID := a.pack(nextP, nextG)
-			*(*uint64)(unsafe.Pointer(&g[0])) |= nextID << 4 // 4 бита флаг
-			// p не уменьшаем, просто прыгнули
-		}
-		pid, gid = nextP, nextG
-	}
-	return rootID
-}
+/*
 
 type cursor1 struct {
 	a      *Linked
@@ -197,47 +120,6 @@ func (a *Linked) Free1(id uint64) {
 
 */
 
-//if run > 1 {
-//    g[0] = byte(run - 1) // Заголовок стрима
-//    n := copy(g[1:], p[:7])
-//    p = p[n:]
-//
-//    for i := 1; i < run; i++ {
-//        // Просто переходим к физически следующей грануле
-//        gid++
-//        if gid == pageGranules { // Переход границы страницы
-//            pid++
-//            gid = 0
-//        }
-//
-//        a.mark(pid, gid, true) // Помечаем как занятую
-//        n = copy(a.pages[pid][gid][:], p)
-//        p = p[n:]
-//    }
-//    // После цикла нам нужно найти СЛЕДУЮЩУЮ свободную точку для следующей итерации
-//    pid, gid = a.next(pid, gid + 1)
-//    continue
-//}
-//
-//for run < 128 && len(p) > (run*8 - 1) {
-//    // Вычисляем, где ДОЛЖНА быть следующая гранула физически
-//    targetP, targetG := tmpP, tmpG + 1
-//    if targetG == pageGranules {
-//        targetP++
-//        targetG = 0
-//    }
-//
-//    // Проверяем, свободна ли она на самом деле
-//    nP, nG := a.next(tmpP, tmpG + 1)
-//
-//    // Если следующая свободная гранула — это именно та, что идет следом в памяти
-//    if nP == targetP && nG == targetG {
-//        run++
-//        tmpP, tmpG = nP, nG
-//    } else {
-//        break // Разрыв: либо занято, либо прыжок через дырку
-//    }
-//}
 //
 //func (c *cursor) step() {
 //    c.gid++

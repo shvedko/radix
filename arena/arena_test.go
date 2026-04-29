@@ -490,3 +490,191 @@ func BenchmarkLinked_mark(b *testing.B) {
 		a.mark(0, gid, x)
 	}
 }
+
+func TestLinked_Write(t *testing.T) {
+
+	t.Run("End", func(t *testing.T) {
+		type want struct {
+			i uint64
+			g *granule
+			b bool
+		}
+		tests := []struct {
+			name string
+			args []byte
+			want want
+		}{
+			// TODO: Add test cases.
+			{
+				name: "",
+				args: []byte{0},
+				want: want{
+					i: 0,
+					g: &granule{0xf1, 0x0},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1},
+				want: want{
+					i: 1,
+					g: &granule{0xf2, 0x0, 0x1},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2},
+				want: want{
+					i: 2,
+					g: &granule{0xf3, 0x0, 0x1, 0x2},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3},
+				want: want{
+					i: 3,
+					g: &granule{0xf4, 0x0, 0x1, 0x2, 0x3},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4},
+				want: want{
+					i: 4,
+					g: &granule{0xf5, 0x0, 0x1, 0x2, 0x3, 0x4},
+					b: true,
+				},
+			}, {
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5},
+				want: want{
+					i: 5,
+					g: &granule{0xf6, 0x0, 0x1, 0x2, 0x3, 0x4, 0x5},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6},
+				want: want{
+					i: 6,
+					g: &granule{0xf7, 0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+					b: true,
+				},
+			},
+		}
+		var a Linked
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := a.Write(tt.args)
+				require.Equal(t, tt.want.i, got)
+				require.Equal(t, tt.want.g, a.granule(unpack(got)))
+				require.Equal(t, tt.want.b, a.bit2(unpack(got)))
+			})
+		}
+	})
+
+	t.Run("Stream", func(t *testing.T) {
+		type want struct {
+			i uint64
+			g []*granule
+			b bool
+		}
+		tests := []struct {
+			name string
+			args []byte
+			want want
+		}{
+			// TODO: Add test cases.
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20},
+				want: want{
+					i: 0,
+					g: []*granule{
+						{0x01, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e},
+						{0xf6, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14}},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21},
+				want: want{
+					i: 3,
+					g: []*granule{
+						{0x01, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e},
+						{0xf7, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15}},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22},
+				want: want{
+					i: 6,
+					g: []*granule{
+						{0x01, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e},
+						{0x80, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15}, // T.2
+						{0xf1, 0x16}},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+				want: want{
+					i: 10,
+					g: []*granule{
+						{0x01, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e},
+						{0xf1, 0xf}},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14},
+				want: want{
+					i: 13,
+					g: []*granule{
+						{0x80, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0x80, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d},
+						{0xf1, 0x0e}},
+					b: true,
+				},
+			},
+			{
+				name: "",
+				args: []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13},
+				want: want{
+					i: 16,
+					g: []*granule{
+						{0x80, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+						{0xf7, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d}},
+					b: true,
+				},
+			},
+		}
+		var a Linked
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := a.Write(tt.args)
+				require.Equal(t, tt.want.i, got)
+				for i := range tt.want.g {
+					require.Equal(t, tt.want.g[i], a.granule(unpack(got)), i)
+					require.Equal(t, tt.want.b, a.bit2(unpack(got)), i)
+					got++
+				}
+			})
+		}
+	})
+}
