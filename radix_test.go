@@ -871,8 +871,8 @@ func BenchmarkRadix_100(b *testing.B) {
 			y[j].Next()
 		}
 		var ok bool
-		var j int
-		for b.Loop() {
+		for i := 0; i < b.N; i++ {
+			j := i % 100
 			v := y[j].Get()
 			if len(v) != 1 || v[0] != j {
 				b.Fatal(j, len(v), "!=", v[0], 1)
@@ -882,8 +882,6 @@ func BenchmarkRadix_100(b *testing.B) {
 			if !ok {
 				b.Fatal()
 			}
-			j++
-			j %= 100
 		}
 	})
 
