@@ -129,7 +129,7 @@ func (a *Linked) find(pid uint64, gid uint16) (uint16, bool) {
 	for i := gid1; i < 4; i++ {
 		mask1 := a.bitset1[pid][i]
 		if i == gid1 {
-			mask1 |= (1 << (gid2 & 63)) - 1
+			mask1 |= 1<<(gid2&63) - 1
 		}
 		if mask1 == ^uint64(0) {
 			continue
@@ -137,7 +137,7 @@ func (a *Linked) find(pid uint64, gid uint16) (uint16, bool) {
 		idx2 := i<<6 + uint16(bits.TrailingZeros64(^mask1))
 		mask2 := a.bitset2[pid][idx2]
 		if idx2 == gid2 {
-			mask2 |= (1 << (gid & 63)) - 1
+			mask2 |= 1<<(gid&63) - 1
 		}
 
 		return idx2<<6 + uint16(bits.TrailingZeros64(^mask2)), true
