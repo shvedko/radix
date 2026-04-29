@@ -404,6 +404,36 @@ func TestLinked_find(t *testing.T) {
 	require.False(t, ok)
 }
 
+func TestLinked_next(t *testing.T) {
+	var a Linked
+
+	for i := uint64(0); i < 128*pageGranules; i++ {
+		pid, gid := a.next(unpack(i))
+		require.EqualValues(t, i>>14, pid, i)
+		require.EqualValues(t, i&0x3FFF, gid, i)
+		a.mark(pid, gid, true)
+		require.EqualValues(t, i, pack(pid, gid))
+	}
+
+	require.Len(t, a.bitset0, 128/64)
+	require.Len(t, a.bitset1, 128)
+	require.Len(t, a.bitset2, 128)
+	require.Len(t, a.pages, 128)
+
+	_, _, ok := a.scan(0, 0)
+	require.False(t, ok)
+
+	pid, gid := a.next(0, 0)
+	require.False(t, ok)
+	require.EqualValues(t, 128, pid)
+	require.EqualValues(t, 0, gid)
+
+	pid, gid, ok = a.scan(0, 0)
+	require.True(t, ok)
+	require.EqualValues(t, 128, pid)
+	require.EqualValues(t, 0, gid)
+}
+
 func BenchmarkLinked_find(b *testing.B) {
 
 	b.Run("emptied", func(b *testing.B) {
