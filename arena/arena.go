@@ -1,16 +1,12 @@
 package arena
 
-import (
-	"math"
-	"math/bits"
-)
+import "math/bits"
 
 const (
 	granuleBytes = 8
 	pageGranules = 16384
 	pageBytes    = pageGranules * granuleBytes
 	_            = pageBytes / 1024
-	_            = math.MaxUint64 / pageBytes
 )
 
 type granule [granuleBytes]byte
@@ -37,7 +33,7 @@ func unpack(id uint64) (uint64, uint16)  { return id >> 14, uint16(id & 0x3FFF) 
 func (a *Linked) next(pid uint64, gid uint16) (uint64, uint16) {
 	//pid += uint64(gid >> 14)
 	//gid &= 0x3FFF
-	if pid >= uint64(len(a.pages)) {
+	if pid >= a.len() {
 		return a.alloc()
 	}
 
@@ -117,7 +113,7 @@ func (a *Linked) mark(pid uint64, gid uint16, occupied bool) {
 }
 
 func (a *Linked) alloc() (uint64, uint16) {
-	i, pid := 1, uint64(len(a.pages))
+	i, pid := 1, a.len()
 	switch {
 	case pid >= 64:
 		i = 8
@@ -131,7 +127,7 @@ func (a *Linked) alloc() (uint64, uint16) {
 
 	for i > 0 {
 		i--
-		if len(a.pages)%64 == 0 {
+		if a.len()%64 == 0 {
 			a.bitset0 = append(a.bitset0, 0)
 		}
 		a.bitset1 = append(a.bitset1, &bits1[i])
@@ -249,7 +245,7 @@ func (a *Linked) need(size int, pid uint64, gid uint16) int {
 		if gid == pageGranules {
 			pid++
 			gid = 0
-			if pid == uint64(len(a.pages)) {
+			if pid == a.len() {
 				a.alloc()
 			}
 		}
