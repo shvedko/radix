@@ -30,6 +30,14 @@ type Linked struct {
 func pack(pid uint64, gid uint16) uint64 { return (pid << 14) | uint64(gid) }
 func unpack(id uint64) (uint64, uint16)  { return id >> 14, uint16(id & 0x3FFF) }
 
+func diff(pid uint64, gid uint16, pid1 uint64, gid1 uint16) uint64 {
+	return pack(pid1, gid1) - pack(pid, gid)
+}
+
+func add(pid uint64, gid uint16, add uint64) (uint64, uint16) {
+	return unpack(pack(pid, gid) + add)
+}
+
 func (a *Linked) next(pid uint64, gid uint16) (uint64, uint16) {
 	//pid += uint64(gid >> 14)
 	//gid &= 0x3FFF
@@ -186,10 +194,10 @@ func (a *Linked) write(p []byte) uint64 {
 		pid1, gid1 := a.next(pid, gid)
 
 		const (
-			T0x80 = 0x3F + 1 + 1
-			T0xC0 = 0xFFF + T0x80 + 1
-			T0xD0 = 0x7FFFF + T0xC0 + 1
-			T0xD8 = 0x7FFFFFF + T0xD0 + 1
+			T0x80 = 0x3F + 1 + 1          // 1000001
+			T0xC0 = 0xFFF + T0x80 + 1     // 1000001000001
+			T0xD0 = 0x7FFFF + T0xC0 + 1   // 10000001000001000001
+			T0xD8 = 0x7FFFFFF + T0xD0 + 1 // 1000000010000001000001000001
 		)
 
 		jump := diff(pid, gid, pid1, gid1)
@@ -233,10 +241,6 @@ func (a *Linked) write(p []byte) uint64 {
 
 		pid, gid = pid1, gid1
 	}
-}
-
-func diff(pid uint64, gid uint16, pid1 uint64, gid1 uint16) uint64 {
-	return pack(pid1, gid1) - pack(pid, gid)
 }
 
 func (a *Linked) need(size int, pid uint64, gid uint16) int {
