@@ -3,7 +3,6 @@ package arena
 import (
 	"math"
 	"math/bits"
-	"unsafe"
 )
 
 const (
@@ -36,6 +35,8 @@ func pack(pid uint64, gid uint16) uint64 { return (pid << 14) | uint64(gid) }
 func unpack(id uint64) (uint64, uint16)  { return id >> 14, uint16(id & 0x3FFF) }
 
 func (a *Linked) next(pid uint64, gid uint16) (uint64, uint16) {
+	//pid += uint64(gid >> 14)
+	//gid &= 0x3FFF
 	if pid >= uint64(len(a.pages)) {
 		return a.alloc()
 	}
@@ -97,13 +98,10 @@ func (a *Linked) mark(pid uint64, gid uint16, occupied bool) {
 	bit2 := uint64(1) << (gid & 63)
 	idx1 := idx2 >> 6
 	bit1 := uint64(1) << (idx2 & 63)
-
 	if occupied {
 		a.bitset2[pid][idx2] |= bit2
-
 		if a.bitset2[pid][idx2] == ^uint64(0) {
 			a.bitset1[pid][idx1] |= bit1
-
 			if a.bitset1[pid][0] == ^uint64(0) &&
 				a.bitset1[pid][1] == ^uint64(0) &&
 				a.bitset1[pid][2] == ^uint64(0) &&
@@ -144,104 +142,135 @@ func (a *Linked) alloc() (uint64, uint16) {
 	return pid, 0
 }
 
-func (a *Linked) Write(p []byte) uint64 {
+func (a *Linked) write(p []byte) uint64 {
 	pid, gid := a.next(a.pid, a.gid)
 	rid := pack(pid, gid)
 
-	for len(p) > 0 {
+	for {
 		a.mark(pid, gid, true)
-		h := &a.pages[pid][gid]
+		h := a.granule(pid, gid)
 
-		// 1. ПРОВЕРКА НА КОНЕЦ
-		if len(p) <= 7 {
-			h[0] = 0xf0 | byte(len(p)) // 11110 + 3 бита длины
+		if len(p) < 8 {
+			h[0] = 0xF0 | byte(len(p)) // T.5
 			copy(h[1:], p)
+
 			return rid
 		}
 
-		// 2. ПРОВЕРКА НА СТРИМ (Тип 0)
-		// Ищем сколько гранул впереди свободны физически подряд
-		size, pid1, gid1 := 1, pid, gid
-		// Максимум 128 гранул в потоке (1 заголовочная + 127 безадресных)
-		for size < 128 && len(p)-7 > (size*8) {
-			// Вычисляем, где ДОЛЖНА быть следующая гранула физически
-			pid2, gid2 := pid1, gid1+1
-			if gid2 == pageGranules {
-				pid2++
-				gid2 = 0
-			}
-
-			// Проверяем, свободна ли она на самом деле
-			nP, nG := a.next(pid1, gid1+1)
-
-			// Если следующая свободная гранула — это именно та, что идет следом в памяти
-			if nP == pid2 && nG == gid2 {
-				size++
-				pid1, gid1 = nP, nG
-			} else {
-				break // Разрыв: либо занято, либо прыжок через дырку
-			}
-		}
-
+		size := min(129, len(p)/8)
 		if size > 1 {
-			h[0] = byte(size - 1) // Заголовок стрима 0 + 7 бит (0..127)
-			n := copy(h[1:], p[:7])
-			p = p[n:]
+			size = a.need(size, pid, gid)
+			if size > 1 {
+				h[0] = byte(size - 2) // T.1
+				copy(h[1:], p)
+				p = p[7:]
 
-			for i := 1; i < size; i++ {
-				// Просто переходим к физически следующей грануле
+				for i := 1; i < size; i++ {
+					gid++
+					if gid == pageGranules {
+						pid++
+						gid = 0
+					}
+
+					a.mark(pid, gid, true)
+					h = a.granule(pid, gid)
+					copy(h[:], p)
+					p = p[8:]
+				}
+
 				gid++
-				if gid == pageGranules { // Переход границы страницы
+				if gid == pageGranules {
 					pid++
 					gid = 0
 				}
-
-				a.mark(pid, gid, true) // Помечаем как занятую
-				n = copy(a.pages[pid][gid][:], p)
-				p = p[n:]
+				continue
 			}
-			// После цикла нам нужно найти СЛЕДУЮЩУЮ свободную точку для следующей итерации
-			pid, gid = a.next(pid, gid+1)
-			continue
 		}
 
-		// 3. ПРЫЖКИ (Если стрим не получился)
-		nextP, nextG := a.next(pid, gid+1)
+		pid1, gid1 := a.next(pid, gid)
 
-		if nextP == pid {
-			diff := nextG - gid // всегда >= 1
+		const (
+			T0x80 = 0x3F + 1 + 1
+			T0xC0 = 0xFFF + T0x80 + 1
+			T0xD0 = 0x7FFFF + T0xC0 + 1
+			T0xD8 = 0x7FFFFFF + T0xD0 + 1
+		)
 
-			if diff <= 64 {
-				// Тип 2: Короткий (10 + 6 бит)
-				h[0] = 0x80 | byte(diff-1)
-				n := copy(h[1:], p[:7])
-				p = p[n:]
-			} else if diff <= 4160 {
-				// Тип 3.0: 2 байта (110 + 0 + 12 бит)
-				val := uint16(diff - 65)
-				h[0] = 0xc0 | byte(val>>8)
-				h[1] = byte(val)
-				n := copy(h[2:], p[:6])
-				p = p[n:]
-			} else {
-				// Тип 3.10 / 3.11 (3-4 байта) — аналогично с bias
-				// ... (для краткости пропустим, логика та же)
-			}
+		jump := diff(pid, gid, pid1, gid1)
+		if jump < T0x80 {
+			jump -= 1
+			h[0] = 0x80 | byte(jump) // T.2
+			copy(h[1:], p)
+			p = p[7:]
+		} else if jump < T0xC0 {
+			jump -= T0x80
+			h[0] = 0xC0 | byte(jump>>8) // T.3.0
+			h[1] = byte(jump)
+			copy(h[2:], p)
+			p = p[6:]
+		} else if jump < T0xD0 {
+			jump -= T0xC0
+			h[0] = 0xD0 | byte(jump>>16) // T.3.10
+			h[1] = byte(jump >> 8)
+			h[2] = byte(jump)
+			copy(h[3:], p)
+			p = p[5:]
+		} else if jump < T0xD8 {
+			jump -= T0xD0
+			h[0] = 0xD8 | byte(jump>>24) // T.3.11
+			h[1] = byte(jump >> 16)
+			h[2] = byte(jump >> 8)
+			h[3] = byte(jump)
+			copy(h[4:], p)
+			p = p[4:]
 		} else {
-			// Тип 4: Jump (1110)
-			h[0] = 0xe0
-			nextID := pack(nextP, nextG)
-			*(*uint64)(unsafe.Pointer(&h[0])) |= nextID << 4 // 4 бита флаг
-			// p не уменьшаем, просто прыгнули
+			jump = pack(pid1, gid1)
+			h[0] = 0xE0 | byte(jump>>56) // T.4
+			h[1] = byte(jump >> 48)
+			h[2] = byte(jump >> 40)
+			h[3] = byte(jump >> 32)
+			h[4] = byte(jump >> 24)
+			h[5] = byte(jump >> 16)
+			h[6] = byte(jump >> 8)
+			h[7] = byte(jump)
 		}
-		pid, gid = nextP, nextG
+
+		pid, gid = pid1, gid1
+	}
+}
+
+func diff(pid uint64, gid uint16, pid1 uint64, gid1 uint16) uint64 {
+	return pack(pid1, gid1) - pack(pid, gid)
+}
+
+func (a *Linked) need(size int, pid uint64, gid uint16) int {
+	for i := 0; i < size; i++ {
+		gid++
+		if gid == pageGranules {
+			pid++
+			gid = 0
+			if pid == uint64(len(a.pages)) {
+				a.alloc()
+			}
+		}
+		if a.occupied(pid, gid) {
+			return i
+		}
 	}
 
-	return rid
+	return size // TODO via bitset1
 }
 
-func (a *Linked) granule(pid uint64, gid uint16) *granule { return &a.pages[pid][gid] }
+func (a *Linked) granule(pid uint64, gid uint16) *granule {
+	return &a.pages[pid][gid]
+}
 
-func (a *Linked) bit2(pid uint64, gid uint16) bool {
+func (a *Linked) occupied(pid uint64, gid uint16) bool {
 	return a.bitset2[pid][(gid>>6)]&(1<<(gid&63)) != 0
 }
+
+func (a *Linked) occupy(pid uint64, gid uint16) {
+	a.mark(pid, gid, true)
+}
+
+func (a *Linked) len() uint64 { return uint64(len(a.pages)) }
