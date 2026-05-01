@@ -17,11 +17,6 @@ type page [pageGranules]granule
 type bitset16k [pageGranules / 64]uint64
 type bitset256 [pageGranules / 64 / 64]uint64
 
-//type hint struct {
-//	pid uint64
-//	gid uint16
-//}
-
 type Linked struct {
 	bitset0 []uint64
 	bitset1 []*bitset256
@@ -124,7 +119,7 @@ func (a *Linked) mark(pid uint64, gid uint16, occupied bool) {
 	}
 }
 
-func (a *Linked) mark2(pid uint64, gid uint16, count int) {
+func (a *Linked) mark2(pid uint64, gid uint16, count int) { // FIXME 129 granules?
 	gid1 := gid + uint16(count) - 1
 	idx1 := gid >> 6
 	idx2 := gid1 >> 6
@@ -391,4 +386,140 @@ func (a *Linked) reset() {
 		a.bitset0[i] = 0
 	}
 	a.hint = 0
+}
+
+type cursor struct {
+	a   *Linked
+	pid uint64
+	gid uint16
+	rem uint16
+	off uint8
+}
+
+func (a *Linked) open(id uint64) cursor {
+	pid, gid := unpack(id)
+	return cursor{
+		a:   a,
+		pid: pid,
+		gid: gid,
+	}
+}
+
+func (c *cursor) read(p []byte) int {
+	var n int
+	for n < len(p) {
+		h := c.a.granule(c.pid, c.gid)
+
+		var jump uint64
+
+		if c.rem > 0 {
+			m := min(c.rem, pageGranules-c.gid)
+			b := unsafe.Slice((*byte)(unsafe.Pointer(h)), m<<3)
+			x := copy(p[n:], b[c.off:])
+			n += x
+			x += int(c.off)
+			c.off = uint8(x & 7)
+			x /= 8
+			c.rem -= uint16(x)
+			if c.off > 0 {
+				break
+			}
+			jump = uint64(x)
+		} else if h[0]&0xF8 == 0xF0 { // T.5 [11110...]
+			n += c.copy(p[n:], h[1+c.off:1+h[0]&0x07])
+			break
+		} else if h[0]&0x80 == 0x00 { // T.1 [0.......]
+			n += c.copy(p[n:], h[1+c.off:])
+			if c.off < 7 {
+				break
+			} else {
+				c.rem = 1 + uint16(h[0])
+			}
+			jump = 1
+		} else if h[0]&0xC0 == 0x80 { // T.2 [10......]
+			n += c.copy(p[n:], h[1+c.off:])
+			if c.off < 7 {
+				break
+			}
+			jump = uint64(h[0] & 0x3F)
+			jump += 0b1
+		} else if h[0]&0xF0 == 0xC0 { // T.3.0 [1100....][........]
+			n += c.copy(p[n:], h[2+c.off:])
+			if c.off < 6 {
+				break
+			}
+			jump = uint64(h[0]&0x0F)<<8 | uint64(h[1])
+			jump += 0b1000001
+		} else if h[0]&0xF8 == 0xD0 { // T.3.10 [11010...][........][........]
+			n += c.copy(p[n:], h[3+c.off:])
+			if c.off < 5 {
+				break
+			}
+			jump = uint64(h[0]&0x07)<<16 | uint64(h[1])<<8 | uint64(h[2])
+			jump += 0b1000001000001
+		} else if h[0]&0xF8 == 0xD8 { // T.3.11 [11011...][........][........][........]
+			n += c.copy(p[n:], h[4+c.off:])
+			if c.off < 4 {
+				break
+			}
+			jump = uint64(h[0]&0x07)<<24 | uint64(h[1])<<16 | uint64(h[2])<<8 | uint64(h[3])
+			jump += 0b10000001000001000001
+		} else if h[0]&0xF0 == 0xE0 { // T.4 [1110....][7]
+			id := uint64(h[0]&0x0F)<<56 |
+				uint64(h[1])<<48 | uint64(h[2])<<40 |
+				uint64(h[3])<<32 | uint64(h[4])<<24 |
+				uint64(h[5])<<16 | uint64(h[6])<<8 | uint64(h[7])
+			c.pid, c.gid = unpack(id)
+			c.off = 0
+			continue
+		} else {
+			return -1
+		}
+
+		c.off = 0
+		c.pid, c.gid = add(c.pid, c.gid, jump)
+	}
+
+	return n
+}
+
+func (c *cursor) copy(p, b []byte) int {
+	n := copy(p, b)
+	c.off += uint8(n)
+	return n
+}
+
+func (a *Linked) unmark2(pid uint64, gid uint16, count int) {
+	if count <= 0 {
+		return
+	}
+
+	lastGid := gid + uint16(count) - 1
+	idxStart := gid >> 6
+	idxEnd := lastGid >> 6
+
+	for i := idxStart; i <= idxEnd; i++ {
+		startBit := uint16(0)
+		if i == idxStart {
+			startBit = gid & 63
+		}
+
+		endBit := uint16(63)
+		if i == idxEnd {
+			endBit = lastGid & 63
+		}
+
+		// Создаем маску бит, которые нужно ОБНУЛИТЬ
+		mask := (^uint64(0) >> (63 - (endBit - startBit))) << startBit
+
+		// Сбрасываем биты через AND NOT
+		a.bitset2[pid][i] &^= mask
+
+		// Обновляем иерархию (битсеты 1 и 0)
+		// Если в uint64 появился хотя бы один ноль, значит он больше не Full
+		idx1 := i >> 6
+		bit1 := uint64(1) << (i & 63)
+		a.bitset1[pid][idx1] &^= bit1
+		a.bitset0[pid>>6] &^= 1 << (pid & 63)
+	}
 }

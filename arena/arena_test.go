@@ -1197,6 +1197,19 @@ func BenchmarkLinked_add(b *testing.B) {
 }
 
 func BenchmarkLinked_write(b *testing.B) {
+
+	b.Run("copy", func(b *testing.B) {
+		var o, c [64 * 1024]byte
+		for i := 0; i < len(o); i++ {
+			o[i] = 7
+		}
+		b.SetBytes(64 * 1024)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			copy(c[:], o[:])
+		}
+	})
+
 	cases := []struct {
 		name string
 		size int64
@@ -1243,4 +1256,395 @@ func BenchmarkLinked_write(b *testing.B) {
 			a.write(p)
 		}
 	})
+}
+
+func Test_cursor_read(t *testing.T) {
+
+	t.Run("end", func(t *testing.T) {
+		var a Linked
+
+		id := a.write([]byte{1, 2, 3, 4, 5, 6, 7})
+		require.Equal(t, pack(0, 0), id)
+		require.Equal(t, &granule{0xf7, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, a.granule(0, 0))
+
+		var p [8]byte
+		c := a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n := c.read(p[:])
+		require.Equal(t, 7, n)
+		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7}, p[:n])
+
+		c = a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n = c.read(p[:0])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 0}, c)
+		require.Equal(t, []byte{}, p[:n])
+
+		n = c.read(p[:1])
+		require.Equal(t, 1, n)
+		require.Equal(t, cursor{a: &a, off: 1}, c)
+		require.Equal(t, []byte{1}, p[:n])
+
+		n = c.read(p[:2])
+		require.Equal(t, 2, n)
+		require.Equal(t, cursor{a: &a, off: 3}, c)
+		require.Equal(t, []byte{2, 3}, p[:n])
+
+		n = c.read(p[:3])
+		require.Equal(t, 3, n)
+		require.Equal(t, cursor{a: &a, off: 6}, c)
+		require.Equal(t, []byte{4, 5, 6}, p[:n])
+
+		n = c.read(p[:4])
+		require.Equal(t, 1, n)
+		require.Equal(t, cursor{a: &a, off: 7}, c)
+		require.Equal(t, []byte{7}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 7}, c)
+		require.Equal(t, []byte{}, p[:n])
+	})
+
+	t.Run("short", func(t *testing.T) {
+		var a Linked
+
+		id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+		require.Equal(t, pack(0, 0), id)
+		require.Equal(t, &granule{0x80, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, a.granule(0, 0))
+		require.Equal(t, &granule{0xf3, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(0, 1))
+
+		var p [16]byte
+		c := a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n := c.read(p[:])
+		require.Equal(t, 10, n)
+		require.Equal(t, cursor{a: &a, gid: 1, off: 3}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+		c = a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n = c.read(p[:0])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 0}, c)
+		require.Equal(t, []byte{}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 5}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 3, gid: 1}, c)
+		require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 3, gid: 1}, c)
+		require.Equal(t, []byte{}, p[:n])
+
+		a.occupy(0, 3)
+
+		id = a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+		require.Equal(t, pack(0, 2), id)
+		require.Equal(t, &granule{0x81, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, a.granule(unpack(id)))
+		require.Equal(t, &granule{0x00, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id+1)))
+		require.Equal(t, &granule{0xf3, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id+2)))
+
+		c = a.open(id)
+		require.Equal(t, cursor{a: &a, gid: 2}, c)
+
+		n = c.read(p[:])
+		require.Equal(t, 10, n)
+		require.Equal(t, cursor{a: &a, gid: 4, off: 3}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+	})
+
+	t.Run("medium", func(t *testing.T) {
+
+		t.Run("0", func(t *testing.T) {
+			var a Linked
+
+			for i := pack(0, 1); i < 100; i++ {
+				if i>>14 >= a.len() {
+					a.alloc()
+				}
+				a.occupy(unpack(i))
+			}
+
+			id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+			require.Equal(t, pack(0, 0), id)
+			require.Equal(t, &granule{0xc0, 0x23, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, a.granule(0, 0))
+			require.Equal(t, &granule{0xf4, 0x07, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0}, a.granule(0, 100))
+
+			var p [16]byte
+			c := a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n := c.read(p[:])
+			require.Equal(t, 10, n)
+			require.Equal(t, cursor{a: &a, off: 4, gid: 100}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+			c = a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n = c.read(p[:0])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 0}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 5}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 4, gid: 100}, c)
+			require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 4, gid: 100}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+		})
+
+		t.Run("10", func(t *testing.T) {
+			var a Linked
+
+			for i := pack(0, 1); i < 10000; i++ {
+				if i>>14 >= a.len() {
+					a.alloc()
+				}
+				a.occupy(unpack(i))
+			}
+
+			id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+			require.Equal(t, pack(0, 0), id)
+			require.Equal(t, &granule{0xd0, 0x16, 0xcf, 0x1, 0x2, 0x3, 0x4, 0x5}, a.granule(0, 0))
+			require.Equal(t, &granule{0xf5, 0x06, 0x07, 0x8, 0x9, 0x0, 0x0, 0x0}, a.granule(0, 10000))
+
+			var p [16]byte
+			c := a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n := c.read(p[:])
+			require.Equal(t, 10, n)
+			require.Equal(t, cursor{a: &a, off: 5, gid: 10000}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+			c = a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n = c.read(p[:0])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 0}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 0, gid: 10000}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 5, gid: 10000}, c)
+			require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 5, gid: 10000}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+		})
+
+		t.Run("11", func(t *testing.T) {
+			var a Linked
+
+			for i := pack(0, 1); i < 555555; i++ {
+				if i>>14 >= a.len() {
+					a.alloc()
+				}
+				a.occupy(unpack(i))
+			}
+
+			id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+			require.Equal(t, pack(0, 0), id)
+			require.Equal(t, &granule{0xd8, 0x0, 0x69, 0xe2, 0x1, 0x2, 0x3, 0x4}, a.granule(0, 0))
+			require.Equal(t, &granule{0xf6, 0x5, 0x06, 0x07, 0x8, 0x9, 0x0, 0x0}, a.granule(unpack(555555)))
+
+			var p [16]byte
+			c := a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n := c.read(p[:10])
+			require.Equal(t, 10, n)
+			require.Equal(t, cursor{a: &a, off: 6, gid: 14883, pid: 33}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+			c = a.open(id)
+			require.Equal(t, cursor{a: &a}, c)
+
+			n = c.read(p[:0])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 0}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 1, gid: 14883, pid: 33}, c)
+			require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 5, n)
+			require.Equal(t, cursor{a: &a, off: 6, gid: 14883, pid: 33}, c)
+			require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+			n = c.read(p[:5])
+			require.Equal(t, 0, n)
+			require.Equal(t, cursor{a: &a, off: 6, gid: 14883, pid: 33}, c)
+			require.Equal(t, []byte{}, p[:n])
+
+		})
+
+	})
+
+	t.Run("stream", func(t *testing.T) {
+		var a Linked
+
+		id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+		require.Equal(t, pack(0, 0), id)
+		require.Equal(t, &granule{0x00, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, a.granule(0, 0))
+		require.Equal(t, &granule{0x08, 0x9, 0x0, 0x1, 0x2, 0x3, 0x4, 0x5}, a.granule(0, 1))
+		require.Equal(t, &granule{0xf5, 0x6, 0x7, 0x8, 0x9, 0x0, 0x0, 0x0}, a.granule(0, 2))
+
+		var p [32]byte
+		c := a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n := c.read(p[:])
+		require.Equal(t, 20, n)
+		require.Equal(t, cursor{a: &a, off: 5, gid: 2}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+
+		c = a.open(id)
+		require.Equal(t, cursor{a: &a}, c)
+
+		n = c.read(p[:0])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 0}, c)
+		require.Equal(t, []byte{}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 5, gid: 0}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 3, gid: 1, rem: 1}, c)
+		require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 0, gid: 2}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 5, n)
+		require.Equal(t, cursor{a: &a, off: 5, gid: 2}, c)
+		require.Equal(t, []byte{6, 7, 8, 9, 0}, p[:n])
+
+		n = c.read(p[:5])
+		require.Equal(t, 0, n)
+		require.Equal(t, cursor{a: &a, off: 5, gid: 2}, c)
+		require.Equal(t, []byte{}, p[:n])
+
+	})
+}
+
+func BenchmarkLinked_read(b *testing.B) {
+
+	b.Run("1MB", func(b *testing.B) {
+		a := Linked{}
+		size := 1024 * 1024
+		d := make([]byte, size)
+		for i := range d {
+			d[i] = byte(i)
+		}
+		id := a.write(d)
+		p := make([]byte, size)
+		b.SetBytes(int64(size))
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			c := a.open(id)
+			if c.read(p) != size {
+				b.Fatal()
+			}
+		}
+	})
+}
+
+func TestLinked_long_jump(t *testing.T) {
+	a := Linked{}
+
+	// 1. Подготовка разреженной арены
+	pid := uint64(10000)
+
+	// Инициализируем управляющие слайсы без аллокации самих страниц
+	a.pages = make([]*page, pid+1)
+	a.bitset1 = make([]*bitset256, pid+1)
+	a.bitset2 = make([]*bitset16k, pid+1)
+	a.bitset0 = make([]uint64, (pid>>6)+1)
+
+	// Заселяем первую страницу (где будет первая гранула)
+	a.pages[0] = &page{}
+
+	// Заселяем последнюю страницу (цель прыжка)
+	a.pages[pid] = &page{}
+
+	// 2. Имитируем "занятость" всего пространства между ними
+	for i := range a.bitset0 {
+		a.bitset0[i] = ^uint64(0)
+	}
+	for i := 0; i < len(a.pages); i++ {
+		a.bitset1[i] = &bitset256{^uint64(0), ^uint64(0), ^uint64(0), ^uint64(0)}
+		a.bitset2[i] = &bitset16k{}
+		for j := 0; j < 256; j++ {
+			a.bitset2[i][j] = ^uint64(0)
+		}
+	}
+	// Открываем дырки в начале и в конце
+	a.mark(0, 0, false)
+	a.mark(pid, 0, false)
+	a.mark(pid, 1, false)
+	a.mark(pid, 2, false)
+
+	// 3. Пишем данные
+	id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+	require.Equal(t, pack(0, 0), id)
+
+	// 4. Заголовок T.4 [1110....]
+	require.Equal(t, &granule{0xe0, 0x0, 0x0, 0x0, 0x9, 0xc4, 0x0, 0x0}, a.granule(0, 0))
+	require.Equal(t, &granule{0x80, 0x1, 0x2, 0x3, 0x4, 0x05, 0x6, 0x7}, a.granule(10000, 0))
+	require.Equal(t, &granule{0xf3, 0x8, 0x9, 0x0, 0x0, 0x00, 0x0, 0x0}, a.granule(10000, 1))
+
+	// 5. Проверяем чтение прыжком через "занятые"
+	var p [16]byte
+
+	c := a.open(id)
+	n := c.read(p[:])
+
+	require.Equal(t, 10, n)
+	require.Equal(t, cursor{a: &a, pid: pid, gid: 1, rem: 0, off: 3}, c)
+	require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
 }
