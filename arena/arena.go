@@ -329,7 +329,7 @@ func (a *Linked) write(p []byte) uint64 {
 
 func (a *Linked) need(size int, pid uint64, gid uint16) int {
 	var i int
-	for i < size {
+	for {
 		gid++
 		if gid >= pageGranules {
 			pid++
@@ -361,8 +361,6 @@ func (a *Linked) need(size int, pid uint64, gid uint16) int {
 
 		gid += uint16(run) - 1
 	}
-
-	return i
 }
 
 func (a *Linked) granule(pid uint64, gid uint16) *granule {
