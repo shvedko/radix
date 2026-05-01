@@ -1,6 +1,7 @@
 package arena
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1134,6 +1135,14 @@ func TestLinked_write(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("1GB", func(t *testing.T) {
+		var a Linked
+		var p [1024 * 1024]byte
+		for i := 0; i < 1024; i++ {
+			a.write(p[:])
+		}
+	})
 }
 
 func makeGranules(t *testing.T, n int, g *granule) []*granule {
@@ -1154,4 +1163,84 @@ func TestLinked_need(t *testing.T) {
 	require.Len(t, a.pages, 1)
 	require.Equal(t, 100, a.need(100, 0, 0x3ff0))
 	require.Len(t, a.pages, 2)
+}
+
+func BenchmarkLinked_add(b *testing.B) {
+	b.Skip()
+	b.Run("", func(b *testing.B) {
+		var gid uint16
+		var pid uint64
+		for i := 0; i < b.N; i++ {
+			gid++
+			if gid == pageGranules {
+				pid++
+				gid = 0
+			}
+		}
+	})
+	b.Run("", func(b *testing.B) {
+		var gid uint16
+		var pid uint64
+		for i := 0; i < b.N; i++ {
+			gid++
+			pid += uint64(gid >> 14)
+			gid &= 0x3FFF
+		}
+	})
+	b.Run("", func(b *testing.B) {
+		var gid uint16
+		var pid uint64
+		for i := 0; i < b.N; i++ {
+			pid, gid = add(pid, gid, 1)
+		}
+	})
+}
+
+func BenchmarkLinked_write(b *testing.B) {
+	cases := []struct {
+		name string
+		size int64
+	}{
+		{"1KB", 1024},
+		{"64KB", 64 * 1024},
+		{"512KB", 512 * 1024},
+		{"1MB", 1024 * 1024},
+		{"8MB", 8 * 1024 * 1024},
+	}
+	for _, c := range cases {
+		runtime.GC()
+
+		b.Run(c.name, func(b *testing.B) {
+			a := Linked{} // NewLinked(2048) // alloc 16160 pages (16384 bytes each)
+			p := make([]byte, c.size)
+			b.SetBytes(c.size)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if a.write(p) > 0x8000000 { // 8192 pages
+					a.reset()
+				}
+			}
+		})
+	}
+
+	b.Run("1x1", func(b *testing.B) {
+		a := Linked{}
+
+		for pid := uint64(0); pid < 8192; pid++ {
+			if pid >= a.len() {
+				a.alloc()
+			}
+			for gid := uint16(0); gid < pageGranules; gid += 2 {
+				a.occupy(pid, gid)
+			}
+		}
+
+		p := make([]byte, 1024)
+		b.SetBytes(int64(len(p)))
+		b.ResetTimer()
+
+		for i := 0; i < b.N; i++ {
+			a.write(p)
+		}
+	})
 }
