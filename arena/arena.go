@@ -119,7 +119,7 @@ func (a *Linked) mark(pid uint64, gid uint16, occupied bool) {
 	}
 }
 
-func (a *Linked) mark2(pid uint64, gid uint16, count int) { // FIXME 129 granules?
+func (a *Linked) mark2(pid uint64, gid uint16, count int) {
 	gid1 := gid + uint16(count) - 1
 	idx1 := gid >> 6
 	idx2 := gid1 >> 6
@@ -135,22 +135,47 @@ func (a *Linked) mark2(pid uint64, gid uint16, count int) { // FIXME 129 granule
 			bit2 = gid1 & 63
 		}
 
-		mask := (^uint64(0) >> (63 - (bit2 - bit1))) << bit1
+		j := i & 0xFF
+		k := pid + uint64(i>>8)
 
-		a.bitset2[pid][i] |= mask
-
-		if a.bitset2[pid][i] == ^uint64(0) {
-			idx := i >> 6
-			a.bitset1[pid][idx] |= uint64(1) << (i & 63)
-			if a.bitset1[pid][idx] == ^uint64(0) {
-				if a.bitset1[pid][0] == ^uint64(0) &&
-					a.bitset1[pid][1] == ^uint64(0) &&
-					a.bitset1[pid][2] == ^uint64(0) &&
-					a.bitset1[pid][3] == ^uint64(0) {
-					a.bitset0[pid>>6] |= 1 << (pid & 63)
+		a.bitset2[k][j] |= (^uint64(0) >> (63 - (bit2 - bit1))) << bit1
+		if a.bitset2[k][j] == ^uint64(0) {
+			idx := j >> 6
+			a.bitset1[k][idx] |= uint64(1) << (j & 63)
+			if a.bitset1[k][idx] == ^uint64(0) {
+				if a.bitset1[k][0] == ^uint64(0) &&
+					a.bitset1[k][1] == ^uint64(0) &&
+					a.bitset1[k][2] == ^uint64(0) &&
+					a.bitset1[k][3] == ^uint64(0) {
+					a.bitset0[k>>6] |= 1 << (k & 63)
 				}
 			}
 		}
+	}
+}
+
+func (a *Linked) unmark2(pid uint64, gid uint16, count int) {
+	gid1 := gid + uint16(count) - 1
+	idx1 := gid >> 6
+	idx2 := gid1 >> 6
+
+	for i := idx1; i <= idx2; i++ {
+		bit1 := uint16(0)
+		if i == idx1 {
+			bit1 = gid & 63
+		}
+
+		bit2 := uint16(63)
+		if i == idx2 {
+			bit2 = gid1 & 63
+		}
+
+		j := i & 0xFF
+		k := pid + uint64(i>>8)
+
+		a.bitset2[k][j] &^= (^uint64(0) >> (63 - (bit2 - bit1))) << bit1
+		a.bitset1[k][(j >> 6)] &^= uint64(1) << (j & 63)
+		a.bitset0[k>>6] &^= 1 << (k & 63)
 	}
 }
 
@@ -203,19 +228,6 @@ func (a *Linked) write(p []byte) uint64 {
 				copy(h[1:], p)
 				p = p[7:]
 
-				//for i := 1; i < size; i++ {
-				//	gid++
-				//	if gid == pageGranules {
-				//		pid++
-				//		gid = 0
-				//	}
-				//
-				//	a.mark(pid, gid, true)
-				//	h = a.granule(pid, gid)
-				//	copy(h[:], p)
-				//	p = p[8:]
-				//}
-
 				i := 1
 				for i < size {
 					gid++
@@ -226,18 +238,11 @@ func (a *Linked) write(p []byte) uint64 {
 
 					m := int(pageGranules - gid)
 					n := min(m, size-i)
-
 					a.mark2(pid, gid, n)
 
-					//b := a.pages[pid][gid : gid+uint16(n)]
-					//for j := 0; j < n; j++ {
-					//	copy(b[j][:], p)
-					//	p = p[8:]
-					//}
-
-					b := unsafe.Slice((*byte)(unsafe.Pointer(&a.pages[pid][gid])), n*8)
+					b := unsafe.Slice((*byte)(unsafe.Pointer(&a.pages[pid][gid])), n<<3)
 					copy(b, p)
-					p = p[n*8:]
+					p = p[n<<3:]
 
 					i += n
 					gid += uint16(n - 1)
@@ -304,24 +309,6 @@ func (a *Linked) write(p []byte) uint64 {
 	}
 }
 
-//func (a *Linked) need(size int, pid uint64, gid uint16) int {
-//	for i := 0; i < size; i++ {
-//		gid++
-//		if gid == pageGranules {
-//			pid++
-//			gid = 0
-//			if pid == a.len() {
-//				a.alloc()
-//			}
-//		}
-//		if a.occupied(pid, gid) {
-//			return i
-//		}
-//	}
-//
-//	return size
-//}
-
 func (a *Linked) need(size int, pid uint64, gid uint16) int {
 	var i int
 	for {
@@ -354,7 +341,7 @@ func (a *Linked) need(size int, pid uint64, gid uint16) int {
 			return i
 		}
 
-		gid += uint16(run) - 1
+		gid += uint16(run - 1)
 	}
 }
 
@@ -487,39 +474,4 @@ func (c *cursor) copy(p, b []byte) int {
 	n := copy(p, b)
 	c.off += uint8(n)
 	return n
-}
-
-func (a *Linked) unmark2(pid uint64, gid uint16, count int) {
-	if count <= 0 {
-		return
-	}
-
-	lastGid := gid + uint16(count) - 1
-	idxStart := gid >> 6
-	idxEnd := lastGid >> 6
-
-	for i := idxStart; i <= idxEnd; i++ {
-		startBit := uint16(0)
-		if i == idxStart {
-			startBit = gid & 63
-		}
-
-		endBit := uint16(63)
-		if i == idxEnd {
-			endBit = lastGid & 63
-		}
-
-		// Создаем маску бит, которые нужно ОБНУЛИТЬ
-		mask := (^uint64(0) >> (63 - (endBit - startBit))) << startBit
-
-		// Сбрасываем биты через AND NOT
-		a.bitset2[pid][i] &^= mask
-
-		// Обновляем иерархию (битсеты 1 и 0)
-		// Если в uint64 появился хотя бы один ноль, значит он больше не Full
-		idx1 := i >> 6
-		bit1 := uint64(1) << (i & 63)
-		a.bitset1[pid][idx1] &^= bit1
-		a.bitset0[pid>>6] &^= 1 << (pid & 63)
-	}
 }

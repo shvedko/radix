@@ -1648,3 +1648,168 @@ func TestLinked_long_jump(t *testing.T) {
 	require.Equal(t, cursor{a: &a, pid: pid, gid: 1, rem: 0, off: 3}, c)
 	require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
 }
+
+func bit(t *testing.T, a, b int) []int {
+	t.Helper()
+	c := make([]int, b-a)
+	for i := range c {
+		c[i] = a + i
+	}
+	return c
+}
+
+func TestLinked_mark2(t *testing.T) {
+	type args struct {
+		pid   uint64
+		gid   uint16
+		count int
+	}
+	tests := []struct {
+		name string
+		args args
+		want Linked
+	}{
+		// TODO: Add test cases.
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: 1,
+			},
+			want: Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{{}, {}, {}},
+				bitset2: []*bitset16k{{1}, {}, {}},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules / 2,
+			},
+			want: Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{newBitset256(t, bit(t, 128, 256)...), {}, {}},
+				bitset2: []*bitset16k{newBitset16k(t, bit(t, pageGranules/2, pageGranules)...), {}, {}},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules,
+			},
+			want: Linked{
+				bitset0: []uint64{1},
+				bitset1: []*bitset256{newBitset256(t), {}, {}},
+				bitset2: []*bitset16k{newBitset16k(t), {}, {}},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules * 2,
+			},
+			want: Linked{
+				bitset0: []uint64{3},
+				bitset1: []*bitset256{newBitset256(t), newBitset256(t), {}},
+				bitset2: []*bitset16k{newBitset16k(t), newBitset16k(t), {}},
+			},
+		},
+	}
+	a := Linked{
+		bitset0: []uint64{0},
+		bitset1: []*bitset256{{}, {}, {}},
+		bitset2: []*bitset16k{{}, {}, {}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a.mark2(tt.args.pid, tt.args.gid, tt.args.count)
+			require.Equal(t, tt.want, a)
+		})
+	}
+}
+
+func TestLinked_unmark2(t *testing.T) {
+	type args struct {
+		pid   uint64
+		gid   uint16
+		count int
+	}
+	tests := []struct {
+		name string
+		args args
+		want Linked
+	}{
+		// TODO: Add test cases.
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: 1,
+			},
+			want: Linked{
+				bitset0: []uint64{6},
+				bitset1: []*bitset256{newBitset256(t, 0), newBitset256(t), newBitset256(t)},
+				bitset2: []*bitset16k{newBitset16k(t, 0), newBitset16k(t), newBitset16k(t)},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules / 2,
+			},
+			want: Linked{
+				bitset0: []uint64{6},
+				bitset1: []*bitset256{newBitset256(t, bit(t, 0, 128)...), newBitset256(t), newBitset256(t)},
+				bitset2: []*bitset16k{newBitset16k(t, bit(t, 0, pageGranules/2)...), newBitset16k(t), newBitset16k(t)},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules,
+			},
+			want: Linked{
+				bitset0: []uint64{6},
+				bitset1: []*bitset256{{}, newBitset256(t), newBitset256(t)},
+				bitset2: []*bitset16k{{}, newBitset16k(t), newBitset16k(t)},
+			},
+		},
+		{
+			name: "",
+			args: args{
+				pid:   0,
+				gid:   0,
+				count: pageGranules * 2,
+			},
+			want: Linked{
+				bitset0: []uint64{4},
+				bitset1: []*bitset256{{}, {}, newBitset256(t)},
+				bitset2: []*bitset16k{{}, {}, newBitset16k(t)},
+			},
+		},
+	}
+	a := Linked{
+		bitset0: []uint64{7},
+		bitset1: []*bitset256{newBitset256(t), newBitset256(t), newBitset256(t)},
+		bitset2: []*bitset16k{newBitset16k(t), newBitset16k(t), newBitset16k(t)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a.unmark2(tt.args.pid, tt.args.gid, tt.args.count)
+			require.Equal(t, tt.want, a)
+		})
+	}
+}
