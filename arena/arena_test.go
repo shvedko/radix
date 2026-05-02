@@ -1570,6 +1570,61 @@ func Test_cursor_read(t *testing.T) {
 		require.Equal(t, []byte{}, p[:n])
 
 	})
+
+	t.Run("long", func(t *testing.T) {
+		a := Linked{}
+
+		// 1. Подготовка разреженной арены
+		pid := uint64(10000)
+
+		// Инициализируем управляющие слайсы без аллокации самих страниц
+		a.pages = make([]*page, pid+1)
+		a.bitset1 = make([]*bitset256, pid+1)
+		a.bitset2 = make([]*bitset16k, pid+1)
+		a.bitset0 = make([]uint64, (pid>>6)+1)
+
+		// Заселяем первую страницу (где будет первая гранула)
+		a.pages[0] = &page{}
+
+		// Заселяем последнюю страницу (цель прыжка)
+		a.pages[pid] = &page{}
+
+		// 2. Имитируем "занятость" всего пространства между ними
+		for i := range a.bitset0 {
+			a.bitset0[i] = ^uint64(0)
+		}
+		for i := 0; i < len(a.pages); i++ {
+			a.bitset1[i] = &bitset256{^uint64(0), ^uint64(0), ^uint64(0), ^uint64(0)}
+			a.bitset2[i] = &bitset16k{}
+			for j := 0; j < 256; j++ {
+				a.bitset2[i][j] = ^uint64(0)
+			}
+		}
+		// Открываем дырки в начале и в конце
+		a.mark(0, 0, false)
+		a.mark(pid, 0, false)
+		a.mark(pid, 1, false)
+		a.mark(pid, 2, false)
+
+		// 3. Пишем данные
+		id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
+		require.Equal(t, pack(0, 0), id)
+
+		// 4. Заголовок T.4 [1110....]
+		require.Equal(t, &granule{0xe0, 0x0, 0x0, 0x0, 0x9, 0xc4, 0x0, 0x0}, a.granule(0, 0))
+		require.Equal(t, &granule{0x80, 0x1, 0x2, 0x3, 0x4, 0x05, 0x6, 0x7}, a.granule(10000, 0))
+		require.Equal(t, &granule{0xf3, 0x8, 0x9, 0x0, 0x0, 0x00, 0x0, 0x0}, a.granule(10000, 1))
+
+		// 5. Проверяем чтение прыжком через "занятые"
+		var p [16]byte
+
+		c := a.open(id)
+		n := c.read(p[:])
+
+		require.Equal(t, 10, n)
+		require.Equal(t, cursor{a: &a, pid: pid, gid: 1, rem: 0, off: 3}, c)
+		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+	})
 }
 
 func BenchmarkLinked_read(b *testing.B) {
@@ -1594,59 +1649,18 @@ func BenchmarkLinked_read(b *testing.B) {
 	})
 }
 
-func TestLinked_long_jump(t *testing.T) {
-	a := Linked{}
+func BenchmarkLinked_free(b *testing.B) {
 
-	// 1. Подготовка разреженной арены
-	pid := uint64(10000)
-
-	// Инициализируем управляющие слайсы без аллокации самих страниц
-	a.pages = make([]*page, pid+1)
-	a.bitset1 = make([]*bitset256, pid+1)
-	a.bitset2 = make([]*bitset16k, pid+1)
-	a.bitset0 = make([]uint64, (pid>>6)+1)
-
-	// Заселяем первую страницу (где будет первая гранула)
-	a.pages[0] = &page{}
-
-	// Заселяем последнюю страницу (цель прыжка)
-	a.pages[pid] = &page{}
-
-	// 2. Имитируем "занятость" всего пространства между ними
-	for i := range a.bitset0 {
-		a.bitset0[i] = ^uint64(0)
-	}
-	for i := 0; i < len(a.pages); i++ {
-		a.bitset1[i] = &bitset256{^uint64(0), ^uint64(0), ^uint64(0), ^uint64(0)}
-		a.bitset2[i] = &bitset16k{}
-		for j := 0; j < 256; j++ {
-			a.bitset2[i][j] = ^uint64(0)
+	b.Run("1MB", func(b *testing.B) {
+		a := Linked{}
+		var p [1 << 20]byte
+		id := a.write(p[:])
+		b.SetBytes(1 << 20)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			a.free(id)
 		}
-	}
-	// Открываем дырки в начале и в конце
-	a.mark(0, 0, false)
-	a.mark(pid, 0, false)
-	a.mark(pid, 1, false)
-	a.mark(pid, 2, false)
-
-	// 3. Пишем данные
-	id := a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
-	require.Equal(t, pack(0, 0), id)
-
-	// 4. Заголовок T.4 [1110....]
-	require.Equal(t, &granule{0xe0, 0x0, 0x0, 0x0, 0x9, 0xc4, 0x0, 0x0}, a.granule(0, 0))
-	require.Equal(t, &granule{0x80, 0x1, 0x2, 0x3, 0x4, 0x05, 0x6, 0x7}, a.granule(10000, 0))
-	require.Equal(t, &granule{0xf3, 0x8, 0x9, 0x0, 0x0, 0x00, 0x0, 0x0}, a.granule(10000, 1))
-
-	// 5. Проверяем чтение прыжком через "занятые"
-	var p [16]byte
-
-	c := a.open(id)
-	n := c.read(p[:])
-
-	require.Equal(t, 10, n)
-	require.Equal(t, cursor{a: &a, pid: pid, gid: 1, rem: 0, off: 3}, c)
-	require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
+	})
 }
 
 func bit(t *testing.T, a, b int) []int {
@@ -1812,4 +1826,45 @@ func TestLinked_unmark2(t *testing.T) {
 			require.Equal(t, tt.want, a)
 		})
 	}
+}
+
+func TestLinked_free(t *testing.T) {
+	var a Linked
+
+	var p [1 << 20]byte
+
+	id := a.write(p[:])
+	require.Equal(t, pack(0, 0), id)
+	require.Equal(t, &granule{0x7f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
+	c := a.open(id)
+	n := c.read(p[:])
+	require.Equal(t, 1<<20, n)
+	require.Equal(t, cursor{a: &a, pid: 8, gid: 127, rem: 0, off: 2}, c)
+	require.Equal(t, pack(8, 127), a.hint)
+
+	a.free(id)
+	require.Equal(t, []uint64{0}, a.bitset0)
+	require.Equal(t, []*bitset256{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}}, a.bitset1)
+	require.Equal(t, []*bitset16k{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}}, a.bitset2)
+	require.Equal(t, pack(0, 0), a.hint)
+
+	a.move(8, 127)
+	require.Equal(t, pack(8, 127), a.hint)
+
+	a.free(id)
+	require.Equal(t, pack(0, 0), a.hint)
+
+	a.move(8, 127)
+	require.Equal(t, pack(8, 127), a.hint)
+
+	a.free(id)
+	require.Equal(t, pack(0, 0), a.hint)
+
+	id = a.write(p[:])
+	require.Equal(t, pack(0, 0), id)
+	require.Equal(t, &granule{0x7f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
+	c = a.open(id)
+	n = c.read(p[:])
+	require.Equal(t, 1<<20, n)
+	require.Equal(t, cursor{a: &a, pid: 8, gid: 127, rem: 0, off: 2}, c)
 }

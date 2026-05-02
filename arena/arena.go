@@ -216,7 +216,7 @@ func (a *Linked) write(p []byte) uint64 {
 		if len(p) < 8 {
 			h[0] = 0xF0 | byte(len(p)) // T.5
 			copy(h[1:], p)
-			a.hint = rid
+			a.hint = pack(pid, gid)
 			return rid
 		}
 
@@ -398,7 +398,6 @@ func (c *cursor) read(p []byte) int {
 		h := c.a.granule(c.pid, c.gid)
 
 		var jump uint64
-
 		if c.rem > 0 {
 			m := min(c.rem, pageGranules-c.gid)
 			b := unsafe.Slice((*byte)(unsafe.Pointer(h)), m<<3)
@@ -406,7 +405,7 @@ func (c *cursor) read(p []byte) int {
 			n += x
 			x += int(c.off)
 			c.off = uint8(x & 7)
-			x /= 8
+			x >>= 3
 			c.rem -= uint16(x)
 			if c.off > 0 {
 				break
@@ -474,4 +473,63 @@ func (c *cursor) copy(p, b []byte) int {
 	n := copy(p, b)
 	c.off += uint8(n)
 	return n
+}
+
+func (a *Linked) free(id uint64) {
+	pid, gid := unpack(id)
+
+	var rem uint16
+	for {
+		h := a.granule(pid, gid)
+
+		var jump uint64
+		if rem > 0 {
+			x := min(rem, pageGranules-gid)
+			rem -= x
+			a.unmark2(pid, gid, int(x))
+			jump = uint64(x)
+		} else if h[0]&0xF8 == 0xF0 { // T.5 [11110...]
+			a.mark(pid, gid, false)
+			if a.hint >= id {
+				a.hint = id
+			}
+			break
+		} else if h[0]&0x80 == 0x00 { // T.1 [0.......]
+			a.mark(pid, gid, false)
+			rem = 1 + uint16(h[0])
+			jump = 1
+		} else if h[0]&0xC0 == 0x80 { // T.2 [10......]
+			a.mark(pid, gid, false)
+			jump = uint64(h[0] & 0x3F)
+			jump += 0b1
+		} else if h[0]&0xF0 == 0xC0 { // T.3.0 [1100....][........]
+			a.mark(pid, gid, false)
+			jump = uint64(h[0]&0x0F)<<8 | uint64(h[1])
+			jump += 0b1000001
+		} else if h[0]&0xF8 == 0xD0 { // T.3.10 [11010...][........][........]
+			a.mark(pid, gid, false)
+			jump = uint64(h[0]&0x07)<<16 | uint64(h[1])<<8 | uint64(h[2])
+			jump += 0b1000001000001
+		} else if h[0]&0xF8 == 0xD8 { // T.3.11 [11011...][........][........][........]
+			a.mark(pid, gid, false)
+			jump = uint64(h[0]&0x07)<<24 | uint64(h[1])<<16 | uint64(h[2])<<8 | uint64(h[3])
+			jump += 0b10000001000001000001
+		} else if h[0]&0xF0 == 0xE0 { // T.4 [1110....][7]
+			a.mark(pid, gid, false)
+			pid, gid = unpack(
+				uint64(h[0]&0x0F)<<56 |
+					uint64(h[1])<<48 | uint64(h[2])<<40 |
+					uint64(h[3])<<32 | uint64(h[4])<<24 |
+					uint64(h[5])<<16 | uint64(h[6])<<8 | uint64(h[7]))
+			continue
+		} else {
+			panic(h)
+		}
+
+		pid, gid = add(pid, gid, jump)
+	}
+}
+
+func (a *Linked) move(pid uint64, gid uint16) {
+	a.hint = pack(pid, gid)
 }
