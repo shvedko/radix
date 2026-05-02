@@ -533,3 +533,7 @@ func (a *Linked) free(id uint64) {
 func (a *Linked) move(pid uint64, gid uint16) {
 	a.hint = pack(pid, gid)
 }
+
+func (a *Linked) unmark(pid uint64, gid uint16) {
+	a.mark(pid, gid, false)
+}

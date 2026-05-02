@@ -1307,6 +1307,15 @@ func Test_cursor_read(t *testing.T) {
 		require.Equal(t, 0, n)
 		require.Equal(t, cursor{a: &a, off: 7}, c)
 		require.Equal(t, []byte{}, p[:n])
+
+		a.free(id)
+		require.Equal(t, Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}},
+			bitset2: []*bitset16k{{}},
+			pages:   []*page{{{0xf7, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}}},
+			hint:    0,
+		}, a)
 	})
 
 	t.Run("short", func(t *testing.T) {
@@ -1351,6 +1360,9 @@ func Test_cursor_read(t *testing.T) {
 
 		a.occupy(0, 3)
 
+		var ids []uint64
+		ids = append(ids, id)
+
 		id = a.write([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0})
 		require.Equal(t, pack(0, 2), id)
 		require.Equal(t, &granule{0x81, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, a.granule(unpack(id)))
@@ -1365,6 +1377,18 @@ func Test_cursor_read(t *testing.T) {
 		require.Equal(t, cursor{a: &a, gid: 4, off: 3}, c)
 		require.Equal(t, []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}, p[:n])
 
+		ids = append(ids, id)
+		for _, id = range ids {
+			a.free(id)
+		}
+		a.mark(0, 3, false)
+		require.Equal(t, Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}},
+			bitset2: []*bitset16k{{}},
+			pages:   []*page{{{0x80, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, {0xf3, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0, 0x0}, {0x81, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7}, {0x00, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, {0xf3, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0, 0x0}}},
+			hint:    0,
+		}, a)
 	})
 
 	t.Run("medium", func(t *testing.T) {
@@ -1416,6 +1440,14 @@ func Test_cursor_read(t *testing.T) {
 			require.Equal(t, cursor{a: &a, off: 4, gid: 100}, c)
 			require.Equal(t, []byte{}, p[:n])
 
+			a.free(id)
+			require.Equal(t, Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{{}},
+				bitset2: []*bitset16k{newBitset16k(t, append(bit(t, 100, pageGranules), 0)...)},
+				pages:   []*page{{{0xc0, 0x23, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, 100: {0xf4, 0x07, 0x8, 0x9, 0x0, 0x0, 0x0, 0x0}}},
+				hint:    0,
+			}, a)
 		})
 
 		t.Run("10", func(t *testing.T) {
@@ -1465,6 +1497,14 @@ func Test_cursor_read(t *testing.T) {
 			require.Equal(t, cursor{a: &a, off: 5, gid: 10000}, c)
 			require.Equal(t, []byte{}, p[:n])
 
+			a.free(id)
+			require.Equal(t, Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{newBitset256(t, append(bit(t, 156, 256), 0)...)},
+				bitset2: []*bitset16k{newBitset16k(t, append(bit(t, 10000, pageGranules), 0)...)},
+				pages:   []*page{{{0xd0, 0x16, 0xcf, 0x1, 0x2, 0x3, 0x4, 0x5}, 10000: {0xf5, 0x06, 0x07, 0x8, 0x9, 0x0, 0x0, 0x0}}},
+				hint:    0,
+			}, a)
 		})
 
 		t.Run("11", func(t *testing.T) {
@@ -1514,6 +1554,17 @@ func Test_cursor_read(t *testing.T) {
 			require.Equal(t, cursor{a: &a, off: 6, gid: 14883, pid: 33}, c)
 			require.Equal(t, []byte{}, p[:n])
 
+			a.free(id)
+			for i := pack(0, 1); i < 555555; i++ {
+				a.unmark(unpack(i))
+			}
+			require.Equal(t, Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}},
+				bitset2: []*bitset16k{{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}},
+				pages:   []*page{{{0xd8, 0x0, 0x69, 0xe2, 0x1, 0x2, 0x3, 0x4}}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {14883: {0xf6, 0x5, 0x06, 0x07, 0x8, 0x9, 0x0, 0x0}}},
+				hint:    0,
+			}, a)
 		})
 
 	})
