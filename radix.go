@@ -1,7 +1,6 @@
 package radix
 
 import (
-	"bytes"
 	"math/bits"
 )
 
@@ -56,6 +55,7 @@ func (p *pool[T]) get() *Radix[T] {
 
 func (p *pool[T]) put(n *Radix[T]) {
 	n.prefix = nil
+	n.begin = 0
 	n.index = bits256{}
 	if cap(n.children) > 64 {
 		n.children = nil
@@ -86,7 +86,7 @@ func (p *pool[T]) reset() {
 
 type Radix[T any] struct {
 	prefix   []byte
-	begin    int // TODO
+	begin    int
 	index    bits256
 	children []*Radix[T]
 	next     *Radix[T]
@@ -101,9 +101,10 @@ func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 		return true, 0, true
 	}
 
+	prefix2 := n.prefix[n.begin:]
 	i := 0
-	for i < len(n.prefix) && i < len(prefix) {
-		if n.prefix[i] != prefix[i] {
+	for i < len(prefix) && i < len(prefix2) {
+		if prefix[i] != prefix2[i] {
 			return false, 0, false
 		}
 		i++
@@ -119,11 +120,11 @@ func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode uint8) ([]frame[T], *Radix[T]) {
 	p := n
 
-	var offset uint32
-	for len(prefix) > 0 {
+	var begin int
+	for len(prefix) > begin {
 		var mutate uint8
 
-		b := prefix[0]
+		b := prefix[begin]
 		i := p.index.num(b)
 		if !p.index.has(b) {
 			p.index.set(b)
@@ -132,27 +133,25 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 			c := n.pool.get()
 			p.children[i] = c
 			p.children[i].prefix = prefix
+			p.children[i].begin = begin
 			mutate = mode << 4
 		}
 
 		p = p.children[i]
-		size := p.common(prefix)
-		if size < len(p.prefix) {
-			p.split(size)
+		begin = p.begin + p.common(prefix[begin:])
+		if begin < len(p.prefix) {
+			p.split(begin)
 			mutate |= mode << 2
 		} else {
 			mutate |= mode
 		}
 
-		offset += uint32(size)
-		prefix = prefix[size:]
-
 		if frames != nil {
 			frames = append(frames, frame[T]{
-				n:      p,
-				layer:  layer,
-				offset: offset,
-				mode:   mode + (mutate&8>>3|mutate&4>>1|mutate&1<<1)>>(mutate&48>>3),
+				n:     p,
+				layer: layer,
+				begin: begin,
+				mode:  mode + (mutate&8>>3|mutate&4>>1|mutate&1<<1)>>(mutate&48>>3),
 			})
 		}
 	}
@@ -161,8 +160,9 @@ func (n *Radix[T]) insert(prefix []byte, frames []frame[T], layer uint16, mode u
 }
 
 func (n *Radix[T]) common(prefix []byte) int {
+	prefix2 := n.prefix[n.begin:]
 	i := 0
-	for i < len(prefix) && i < len(n.prefix) && prefix[i] == n.prefix[i] {
+	for i < len(prefix) && i < len(prefix2) && prefix[i] == prefix2[i] {
 		i++
 	}
 	return i
@@ -170,16 +170,17 @@ func (n *Radix[T]) common(prefix []byte) int {
 
 func (n *Radix[T]) split(size int) {
 	c := n.pool.get()
-	c.prefix = n.prefix[size:]
+	c.prefix = n.prefix
+	c.begin = size
 	c.index = n.index
 	c.next = n.next
 
 	c.values, n.values = n.values, c.values
 	c.children, n.children = n.children, append(c.children[:0], c)
 
-	n.prefix = n.prefix[:size]
+	n.prefix = n.prefix[:c.begin]
 	n.index = bits256{}
-	n.index.set(c.prefix[0])
+	n.index.set(c.prefix[c.begin])
 	n.next = nil
 }
 
@@ -247,7 +248,7 @@ func (n *Radix[T]) Dump(yield dumper[T]) bool {
 }
 
 func (n *Radix[T]) dump(level uint32, end bool, yield dumper[T]) bool {
-	if !yield(n.prefix, level, end, n.values) {
+	if !yield(n.prefix[n.begin:], level, end, n.values) {
 		return false
 	}
 
@@ -289,7 +290,7 @@ func (n *Radix[T]) walk(yield dumper[T]) bool {
 	for len(q) > 0 {
 		p, q = q[len(q)-1], q[:len(q)-1]
 
-		if !yield(p.n.prefix, p.level, p.end, p.n.values) {
+		if !yield(p.n.prefix[p.n.begin:], p.level, p.end, p.n.values) {
 			return false
 		}
 
@@ -348,11 +349,11 @@ func (n *Radix[T]) Foreach(prefixes ...[]byte) func(func(T) bool) {
 }
 
 type frame[T any] struct {
-	n      *Radix[T]
-	offset uint32
-	layer  uint16
-	mode   uint8
-	c      uint8
+	n     *Radix[T]
+	begin int
+	layer uint16
+	mode  uint8
+	c     uint8
 }
 
 type Iterator[T any] struct {
@@ -369,9 +370,9 @@ func (t *Iterator[T]) Next() bool {
 			prefix = t.prefixes[f.layer]
 		}
 
-		matched, consumed, end := f.n.match(prefix[f.offset:])
+		matched, consumed, end := f.n.match(prefix[f.begin:])
 		if matched {
-			f.offset += uint32(consumed)
+			f.begin += consumed
 			if end {
 				switch f.mode {
 				case 0:
@@ -437,12 +438,12 @@ func (t *Iterator[T]) Next() bool {
 
 			if f.mode != 3 {
 				f.mode = 3
-				c := prefix[f.offset]
+				c := prefix[f.begin]
 				if f.n.index.has(c) {
 					t.frames = append(t.frames, frame[T]{
-						n:      f.n.children[f.n.index.num(c)],
-						offset: f.offset,
-						layer:  f.layer,
+						n:     f.n.children[f.n.index.num(c)],
+						begin: f.begin,
+						layer: f.layer,
 					})
 					continue
 				}
@@ -462,9 +463,9 @@ func (t *Iterator[T]) append(i uint8, m uint64, f *frame[T]) {
 		f.mode++
 	}
 	t.frames = append(t.frames, frame[T]{
-		n:      f.n.children[f.n.index.num(i)],
-		offset: f.offset,
-		layer:  f.layer,
+		n:     f.n.children[f.n.index.num(i)],
+		begin: f.begin,
+		layer: f.layer,
 	})
 }
 
@@ -521,7 +522,7 @@ func (t *Iterator[T]) merge(v int) {
 		if p.n.next == n.n {
 			p.n.next = nil
 		} else {
-			p.n.remove(n.n.prefix[0])
+			p.n.remove(n.n.prefix[n.n.begin])
 		}
 		t.frames = t.frames[:i]
 		i--
@@ -533,18 +534,7 @@ func (t *Iterator[T]) merge(v int) {
 func (n *Radix[T]) merge() {
 	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
 		c := n.children[0]
-
-		pLen := len(n.prefix)
-		cLen := len(c.prefix)
-		pCap := cap(n.prefix)
-		fLen := pLen + cLen
-
-		if fLen <= pCap && (&n.prefix[:pCap][pLen] == &c.prefix[0] || bytes.Equal(c.prefix, n.prefix[pLen:fLen])) {
-			n.prefix = n.prefix[:fLen]
-		} else {
-			n.prefix = append(n.prefix[:pLen:pLen], c.prefix...)
-		}
-
+		n.prefix = c.prefix
 		n.index = c.index
 		n.children, c.children = c.children, n.children
 		n.values, c.values = c.values, n.values
@@ -568,6 +558,7 @@ func (n *Radix[T]) remove(c uint8) {
 
 func (n *Radix[T]) Reset() {
 	n.prefix = nil
+	n.begin = 0
 	n.children = n.children[:0]
 	n.index = bits256{}
 	n.values = n.values[:0]
