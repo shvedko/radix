@@ -509,7 +509,7 @@ func (t *Iterator[T]) merge(v int) {
 			return
 		}
 		var zero T
-		n.n.values[v] = zero
+		n.n.values[len(n.n.values)-1] = zero
 		n.n.values = append(n.n.values[:v], n.n.values[v+1:]...)
 	}
 
