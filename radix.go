@@ -1,8 +1,8 @@
 package radix
 
 import (
-	"bytes"
 	"math/bits"
+	"unsafe"
 )
 
 type bits256 [4]uint64
@@ -72,13 +72,10 @@ func (p *pool[T]) put(n *Radix[T]) {
 func (p *pool[T]) reset() {
 	p.nodes = p.nodes[:0]
 
-	var zero T
 	for i := range p.pages {
 		for j := range p.pages[i] {
 			n := &p.pages[i][j]
-			for v := range n.values {
-				n.values[v] = zero
-			}
+			n.zero()
 			p.put(n)
 		}
 	}
@@ -86,7 +83,6 @@ func (p *pool[T]) reset() {
 
 type Radix[T any] struct {
 	prefix   []byte
-	begin    int // TODO
 	index    bits256
 	children []*Radix[T]
 	next     *Radix[T]
@@ -356,6 +352,7 @@ type frame[T any] struct {
 }
 
 type Iterator[T any] struct {
+	static   [8]frame[T]
 	frames   []frame[T]
 	prefixes [][]byte
 }
@@ -502,6 +499,7 @@ func (t *Iterator[T]) merge(v int) {
 
 	switch v {
 	case -2:
+		n.n.zero()
 		n.n.values = n.n.values[:0]
 	case -1:
 		v += len(n.n.values)
@@ -533,18 +531,7 @@ func (t *Iterator[T]) merge(v int) {
 func (n *Radix[T]) merge() {
 	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
 		c := n.children[0]
-
-		pLen := len(n.prefix)
-		cLen := len(c.prefix)
-		pCap := cap(n.prefix)
-		fLen := pLen + cLen
-
-		if fLen <= pCap && (&n.prefix[:pCap][pLen] == &c.prefix[0] || bytes.Equal(c.prefix, n.prefix[pLen:fLen])) {
-			n.prefix = n.prefix[:fLen]
-		} else {
-			n.prefix = append(n.prefix[:pLen:pLen], c.prefix...)
-		}
-
+		n.prefix = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(&c.prefix[0]))-uintptr(len(n.prefix)))), len(n.prefix)+len(c.prefix))
 		n.index = c.index
 		n.children, c.children = c.children, n.children
 		n.values, c.values = c.values, n.values
@@ -570,7 +557,18 @@ func (n *Radix[T]) Reset() {
 	n.prefix = nil
 	n.children = n.children[:0]
 	n.index = bits256{}
+	n.zero()
 	n.values = n.values[:0]
 	n.next = nil
 	n.pool.reset()
+}
+
+func (n *Radix[T]) zero() {
+	if len(n.values) == 0 {
+		return
+	}
+	var zero T
+	for j := range n.values {
+		n.values[j] = zero
+	}
 }
