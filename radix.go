@@ -92,6 +92,13 @@ type Radix[T any] struct {
 
 func New[T any]() *Radix[T] { return &Radix[T]{pool: &pool[T]{}} }
 
+func (n *Radix[T]) Grow(nodes int) *Radix[T] { // FIXME
+	for len(n.pool.pages)*pageSize < nodes {
+		n.pool.grow()
+	}
+	return n
+}
+
 func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
 	if len(prefix) == 0 {
 		return true, 0, true

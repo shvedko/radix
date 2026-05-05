@@ -2,6 +2,7 @@ package radix_test
 
 import (
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strconv"
 	"strings"
@@ -899,11 +900,11 @@ func BenchmarkRadix_100(b *testing.B) {
 	})
 
 	b.Run("Insert-GoMap", func(b *testing.B) {
-		var m1 map[string]map[string]int
+		m1 := map[string]map[string]int{}
 		for i := 0; i < b.N; i++ {
 			j := i % 100
 			if j == 0 {
-				m1 = map[string]map[string]int{}
+				clear(m1)
 			}
 			m2, ok := m1[string(k[j*2])]
 			if !ok {
@@ -980,5 +981,59 @@ func TestRadix_InsertPath(t *testing.T) {
 	ok = j.Next()
 	if ok {
 		t.Fatal()
+	}
+}
+
+func BenchmarkRadix_Random(b *testing.B) {
+
+	for f, n := range map[string]int{"100K": 100_000, "1M": 1_000_000} {
+		k := make([][]byte, n*2)
+		u := make(map[string]struct{}, n*2)
+		for i := range k {
+			k[i] = make([]byte, 16)
+			for {
+				rand.Read(k[i])
+				_, ok := u[string(k[i])]
+				if !ok {
+					u[string(k[i])] = struct{}{}
+					break
+				}
+			}
+		}
+
+		b.Run(f, func(b *testing.B) {
+
+			b.Run("Insert", func(b *testing.B) {
+				t := radix.New[int]()
+				t.Grow(4 * n)
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					j := i % n
+					if j == 0 {
+						t.Reset()
+					}
+					ok := t.Insert(i, true, k[j*2], k[j*2+1])
+					if !ok {
+						b.Fatal(j)
+					}
+				}
+			})
+
+			b.Run("GoMap", func(b *testing.B) {
+				m1 := map[string]map[string]int{}
+				for i := 0; i < b.N; i++ {
+					j := i % n
+					if j == 0 {
+						clear(m1)
+					}
+					m2, ok := m1[string(k[j*2])]
+					if !ok {
+						m2 = map[string]int{}
+						m1[string(k[j*2])] = m2
+					}
+					m2[string(k[j*2+1])] = j
+				}
+			})
+		})
 	}
 }
