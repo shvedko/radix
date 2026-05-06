@@ -359,6 +359,45 @@ func TestSized_want(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("random", func(t *testing.T) {
+		b := &Sized{
+			Linked: Linked{
+				bitset0: []uint64{0},
+				bitset1: []*bitset256{{}},
+				bitset2: []*bitset16k{{}},
+				pages:   []*page{{}},
+				hint:    0,
+			},
+			hints: [16]uint64{},
+		}
+		c := []uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
+		for len(c) > 0 {
+			i := random(t, len(c))
+			u := c[i]
+			x, r, s := class14((1<<u)/2 + 1 + uint16(random(t, 1<<u)/2))
+			if x != u {
+				t.Fatal(x, u)
+			}
+			gid, ok := b.want(0, 0, 1<<u)
+			if ok {
+				b.mark2(0, gid, (1<<u)-r*s)
+			} else {
+				c = append(c[:i], c[i+1:]...)
+			}
+		}
+		require.Equal(t, newBitset16k(t), b.bitset2[0])
+		require.Equal(t, newBitset256(t), b.bitset1[0])
+		require.Equal(t, uint64(1), b.bitset0[0])
+	})
+}
+
+var seed int
+
+func random(t *testing.T, n int) int {
+	t.Helper()
+	seed = (1103515245*seed + 12345) & 0x7fffffff
+	return seed % n
 }
 
 func BenchmarkSized_want(b *testing.B) {

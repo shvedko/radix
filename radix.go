@@ -570,11 +570,12 @@ func (n *Radix[T]) Reset() {
 }
 
 func (n *Radix[T]) zero() {
-	if len(n.values) == 0 {
-		return
-	}
-	var zero T
-	for j := range n.values {
-		n.values[j] = zero
-	}
+	//if len(n.values) == 0 {
+	//	return
+	//}
+	//var zero T
+	//for j := range n.values {
+	//	n.values[j] = zero
+	//}
+	clear(n.values)
 }
