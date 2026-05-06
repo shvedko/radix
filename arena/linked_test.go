@@ -1159,9 +1159,9 @@ func TestLinked_need(t *testing.T) {
 
 	a.alloc()
 
-	require.Equal(t, 100, a.need(100, 0, 0))
+	require.EqualValues(t, 100, a.need(100, 0, 0))
 	require.Len(t, a.pages, 1)
-	require.Equal(t, 100, a.need(100, 0, 0x3ff0))
+	require.EqualValues(t, 100, a.need(100, 0, 0x3ff0))
 	require.Len(t, a.pages, 2)
 }
 
@@ -1727,7 +1727,7 @@ func TestLinked_mark2(t *testing.T) {
 	type args struct {
 		pid   uint64
 		gid   uint16
-		count int
+		count uint16
 	}
 	tests := []struct {
 		name string
@@ -1805,7 +1805,7 @@ func TestLinked_unmark2(t *testing.T) {
 	type args struct {
 		pid   uint64
 		gid   uint16
-		count int
+		count uint16
 	}
 	tests := []struct {
 		name string

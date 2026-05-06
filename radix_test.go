@@ -37,10 +37,9 @@ func newDumper[T any](printers ...func(a ...any)) func(prefix []byte, level uint
 		}
 		if len(prefix) > 0 {
 			b.WriteString("─[")
-			b.WriteByte(prefix[0])
-			b.WriteString("]:\"")
-			b.Write(prefix)
-			b.WriteByte('"')
+			b.WriteString(strings.Trim(strconv.QuoteToASCII(string(prefix[0])), "\""))
+			b.WriteString("]:")
+			b.WriteString(strconv.Quote(string(prefix)))
 		} else if len(m) > 1 {
 			b.WriteString("»┬")
 		} else {
@@ -431,7 +430,7 @@ func TestRadix_Search(t *testing.T) {
 			want: []string{"v1", "v2", "v3"},
 		},
 		{
-			name: "All under '\255'",
+			name: "All under '\\xff'",
 			args: args{prefixes: [][]byte{{255}}},
 			want: []string{"a1", "a2"},
 		},

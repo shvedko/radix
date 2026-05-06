@@ -119,8 +119,8 @@ func (a *Linked) mark(pid uint64, gid uint16, occupied bool) {
 	}
 }
 
-func (a *Linked) mark2(pid uint64, gid uint16, count int) {
-	gid1 := gid + uint16(count) - 1
+func (a *Linked) mark2(pid uint64, gid uint16, granules uint16) {
+	gid1 := gid + granules - 1
 	idx1 := gid >> 6
 	idx2 := gid1 >> 6
 
@@ -154,8 +154,8 @@ func (a *Linked) mark2(pid uint64, gid uint16, count int) {
 	}
 }
 
-func (a *Linked) unmark2(pid uint64, gid uint16, count int) {
-	gid1 := gid + uint16(count) - 1
+func (a *Linked) unmark2(pid uint64, gid uint16, granules uint16) {
+	gid1 := gid + granules - 1
 	idx1 := gid >> 6
 	idx2 := gid1 >> 6
 
@@ -220,7 +220,7 @@ func (a *Linked) write(p []byte) uint64 {
 			return rid
 		}
 
-		size := min(129, len(p)/8)
+		size := uint16(min(129, len(p)/8))
 		if size > 1 {
 			size = a.need(size, pid, gid)
 			if size > 1 {
@@ -228,7 +228,7 @@ func (a *Linked) write(p []byte) uint64 {
 				copy(h[1:], p)
 				p = p[7:]
 
-				i := 1
+				i := uint16(1)
 				for i < size {
 					gid++
 					if gid == pageGranules {
@@ -236,16 +236,15 @@ func (a *Linked) write(p []byte) uint64 {
 						gid = 0
 					}
 
-					m := int(pageGranules - gid)
-					n := min(m, size-i)
-					a.mark2(pid, gid, n)
+					x := min(size-i, pageGranules-gid)
+					a.mark2(pid, gid, x)
 
-					b := unsafe.Slice((*byte)(unsafe.Pointer(&a.pages[pid][gid])), n<<3)
+					b := unsafe.Slice((*byte)(unsafe.Pointer(&a.pages[pid][gid])), x<<3)
 					copy(b, p)
-					p = p[n<<3:]
+					p = p[x<<3:]
 
-					i += n
-					gid += uint16(n - 1)
+					i += x
+					gid += x - 1
 				}
 
 				gid++
@@ -309,8 +308,8 @@ func (a *Linked) write(p []byte) uint64 {
 	}
 }
 
-func (a *Linked) need(size int, pid uint64, gid uint16) int {
-	var i int
+func (a *Linked) need(size uint16, pid uint64, gid uint16) uint16 {
+	var i uint16
 	for {
 		gid++
 		if gid >= pageGranules {
@@ -326,8 +325,8 @@ func (a *Linked) need(size int, pid uint64, gid uint16) int {
 			return i
 		}
 
-		run := bits.TrailingZeros64(mask)
-		end := 64 - int(gid&63)
+		run := uint16(bits.TrailingZeros64(mask))
+		end := 64 - (gid & 63)
 		if run > end {
 			run = end
 		}
@@ -341,7 +340,7 @@ func (a *Linked) need(size int, pid uint64, gid uint16) int {
 			return i
 		}
 
-		gid += uint16(run - 1)
+		gid += run - 1
 	}
 }
 
@@ -486,7 +485,7 @@ func (a *Linked) free(id uint64) {
 		if rem > 0 {
 			x := min(rem, pageGranules-gid)
 			rem -= x
-			a.unmark2(pid, gid, int(x))
+			a.unmark2(pid, gid, x)
 			jump = uint64(x)
 		} else if h[0]&0xF8 == 0xF0 { // T.5 [11110...]
 			a.mark(pid, gid, false)

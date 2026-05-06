@@ -72,8 +72,8 @@ func put28(g *granule, size uint32) uint32 {
 //	| 13    | 8192    | 64 KB  | 2      | 4608-8192  | 512  | 0,512,1024,1536,2048,2560,3072,3584  |
 //	| 14    | 16384   | 128 KB | 1      | 9216-16384 | 1024 | 0,1024,2048,3072,4096,5120,6144,7168 |
 //	|-------|---------|--------|--------|------------|------|--------------------------------------|
-func class14(granules uint32) (class, remain, step uint32) {
-	class = uint32(bits.Len32(granules - 1))
+func class14(granules uint16) (class uint8, remain, step uint16) {
+	class = uint8(bits.Len16(granules - 1))
 	if class < 2 {
 		step = 1
 	} else if class < 5 {
@@ -86,31 +86,26 @@ func class14(granules uint32) (class, remain, step uint32) {
 	return
 }
 
-func (a *Sized) class(class uint8) (uint64, uint16) {
-	size := (8) << class
+func (a *Sized) class(class uint8, pid uint64, gid uint16) (uint64, uint16) {
+	granules := uint16(1) << class
 
-	// Проходим по существующим страницам сверху вниз
-	for pid := uint64(0); pid < uint64(len(a.pages)); pid++ {
-		// Быстрая проверка: если бит в bitset0 установлен, в странице нет места вообще
+	var ok bool
+	for pid < a.len() {
 		if (a.bitset0[pid>>6] & (1 << (pid & 63))) != 0 {
 			continue
 		}
-
-		gid, ok := a.want(pid, 0, size)
+		gid, ok = a.want(pid, gid, granules)
 		if ok {
-			//	a.mark2(pid, gid, size)
 			return pid, gid
 		}
+		pid++
 	}
 
-	// Если места нет ни в одной странице, выделяем новую
-	pid, gid := a.alloc()
-	//	a.mark2(pid, gid, size)
-	return pid, gid
+	return a.alloc()
 }
 
-func (a *Sized) want(pid uint64, gid uint16, size int) (uint16, bool) {
-	words := size >> 6
+func (a *Sized) want(pid uint64, gid uint16, granules uint16) (uint16, bool) {
+	words := granules >> 6
 
 	if words == 0 {
 		for i := gid >> 6; i < 256; i++ {
@@ -120,14 +115,15 @@ func (a *Sized) want(pid uint64, gid uint16, size int) (uint16, bool) {
 			if mask == ^uint64(0) {
 				continue
 			}
-			for bit := 1; bit < size; bit <<= 1 {
+			for bit := uint16(1); bit < granules; bit <<= 1 {
 				mask |= mask >> bit
 			}
-			free := (^mask) & (^uint64(0) / ((uint64(1) << size) - 1))
+			free := (^mask) & (^uint64(0) / ((uint64(1) << granules) - 1))
 			if free != 0 {
 				return i*64 + uint16(bits.TrailingZeros64(free)), true
 			}
 		}
+
 		return 0, false
 	}
 
@@ -139,23 +135,24 @@ func (a *Sized) want(pid uint64, gid uint16, size int) (uint16, bool) {
 			a.bitset1[pid][3] == 0 {
 			return 0, true
 		}
+
 		return 0, false
 	}
 
-	size--
-	for i := (int(gid) + (size)) &^ (size) >> 6; i < 256; i += words {
+	granules--
+	for i := (gid + granules) &^ granules >> 6; i < 256; i += words {
 		if words >= 64 && a.bitset1[pid][i>>6] != 0 {
 			continue
 		}
 		if a.bitset2[pid].empty(i, i+words) {
-			return uint16(i * 64), true
+			return i * 64, true
 		}
 	}
 
 	return 0, false
 }
 
-func (b *bitset16k) empty(from, to int) bool {
+func (b *bitset16k) empty(from, to uint16) bool {
 	for i := range b[from:to] {
 		if b[from:to][i] != 0 {
 			return false

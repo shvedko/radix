@@ -23,7 +23,7 @@ func Test_size28(t *testing.T) {
 
 func Test_class14(t *testing.T) {
 	var need, fire uint
-	for i := uint32(0); i <= pageGranules+1; i++ {
+	for i := uint16(0); i <= pageGranules+1; i++ {
 		class, remain, step := class14(i)
 		if step == 0 {
 			continue
@@ -40,17 +40,11 @@ func Test_class14(t *testing.T) {
 	}
 }
 
-func Benchmark_class14(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		class14(uint32(i) & 0x20000)
-	}
-}
-
 func TestSized_want(t *testing.T) {
 	type args struct {
-		pid  uint64
-		gid  uint16
-		size int
+		pid   uint64
+		gid   uint16
+		count uint16
 	}
 	tests := []struct {
 		name  string
@@ -62,8 +56,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 1,
+				pid:   0,
+				count: 1,
 			},
 			want:  0,
 			want1: true,
@@ -71,8 +65,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 1,
+				pid:   0,
+				count: 1,
 			},
 			want:  1,
 			want1: true,
@@ -80,8 +74,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 1,
+				pid:   0,
+				count: 1,
 			},
 			want:  2,
 			want1: true,
@@ -89,8 +83,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 2,
+				pid:   0,
+				count: 2,
 			},
 			want:  4,
 			want1: true,
@@ -98,8 +92,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 4,
+				pid:   0,
+				count: 4,
 			},
 			want:  8,
 			want1: true,
@@ -107,8 +101,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 2,
+				pid:   0,
+				count: 2,
 			},
 			want:  6,
 			want1: true,
@@ -116,8 +110,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 1,
+				pid:   0,
+				count: 1,
 			},
 			want:  3,
 			want1: true,
@@ -125,8 +119,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 8,
+				pid:   0,
+				count: 8,
 			},
 			want:  16,
 			want1: true,
@@ -134,8 +128,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 16,
+				pid:   0,
+				count: 16,
 			},
 			want:  32,
 			want1: true,
@@ -143,8 +137,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 8,
+				pid:   0,
+				count: 8,
 			},
 			want:  24,
 			want1: true,
@@ -152,8 +146,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 32,
+				pid:   0,
+				count: 32,
 			},
 			want:  64,
 			want1: true,
@@ -161,8 +155,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 64,
+				pid:   0,
+				count: 64,
 			},
 			want:  128,
 			want1: true,
@@ -170,8 +164,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 128,
+				pid:   0,
+				count: 128,
 			},
 			want:  256,
 			want1: true,
@@ -179,8 +173,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 256,
+				pid:   0,
+				count: 256,
 			},
 			want:  512,
 			want1: true,
@@ -188,8 +182,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 512,
+				pid:   0,
+				count: 512,
 			},
 			want:  1024,
 			want1: true,
@@ -197,8 +191,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 1024,
+				pid:   0,
+				count: 1024,
 			},
 			want:  2048,
 			want1: true,
@@ -206,8 +200,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 2048,
+				pid:   0,
+				count: 2048,
 			},
 			want:  4096,
 			want1: true,
@@ -215,8 +209,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 4096,
+				pid:   0,
+				count: 4096,
 			},
 			want:  8192,
 			want1: true,
@@ -224,8 +218,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: 8192,
+				pid:   0,
+				count: 8192,
 			},
 			want:  0,
 			want1: false,
@@ -233,8 +227,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  1,
-				size: 8192,
+				pid:   1,
+				count: 8192,
 			},
 			want:  0,
 			want1: true,
@@ -242,8 +236,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				size: pageGranules,
+				pid:   0,
+				count: pageGranules,
 			},
 			want:  0,
 			want1: false,
@@ -251,8 +245,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  1,
-				size: pageGranules,
+				pid:   1,
+				count: pageGranules,
 			},
 			want:  0,
 			want1: false,
@@ -260,8 +254,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  2,
-				size: pageGranules,
+				pid:   2,
+				count: pageGranules,
 			},
 			want:  0,
 			want1: true,
@@ -269,8 +263,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  2,
-				size: 1,
+				pid:   2,
+				count: 1,
 			},
 			want:  0,
 			want1: false,
@@ -278,8 +272,8 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  1,
-				size: 1,
+				pid:   1,
+				count: 1,
 			},
 			want:  8192,
 			want1: true,
@@ -287,9 +281,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  0,
-				size: 1,
+				pid:   0,
+				gid:   0,
+				count: 1,
 			},
 			want:  12,
 			want1: true,
@@ -297,9 +291,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  11111,
-				size: 1,
+				pid:   0,
+				gid:   11111,
+				count: 1,
 			},
 			want:  12288,
 			want1: true,
@@ -307,9 +301,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  12345,
-				size: 1,
+				pid:   0,
+				gid:   12345,
+				count: 1,
 			},
 			want:  12345,
 			want1: true,
@@ -317,9 +311,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  pageGranules - 600, // 15784
-				size: 512,
+				pid:   0,
+				gid:   pageGranules - 600, // 15784
+				count: 512,
 			},
 			want:  15872, // + 512 = 16384, > 15784
 			want1: true,
@@ -327,9 +321,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  pageGranules - 1000,
-				size: 512,
+				pid:   0,
+				gid:   pageGranules - 1000,
+				count: 512,
 			},
 			want:  0,
 			want1: false,
@@ -337,9 +331,9 @@ func TestSized_want(t *testing.T) {
 		{
 			name: "",
 			args: args{
-				pid:  0,
-				gid:  pageGranules - 1100,
-				size: 512,
+				pid:   0,
+				gid:   pageGranules - 1100,
+				count: 512,
 			},
 			want:  15360, // > 15284
 			want1: true,
@@ -357,11 +351,11 @@ func TestSized_want(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := a.want(tt.args.pid, tt.args.gid, tt.args.size)
+			got, ok := a.want(tt.args.pid, tt.args.gid, tt.args.count)
 			require.Equal(t, tt.want1, ok)
 			require.Equal(t, tt.want, got)
 			if ok {
-				a.mark2(tt.args.pid, got, tt.args.size)
+				a.mark2(tt.args.pid, got, tt.args.count)
 			}
 		})
 	}
@@ -378,20 +372,23 @@ func BenchmarkSized_want(b *testing.B) {
 		},
 		hints: [16]uint64{},
 	}
+	var gid uint16
+	var ok bool
 	for i := 0; i < b.N; i++ {
 		var pid uint64
-		j := i & 15
+		j := uint16(i & 15)
 		switch j {
 		case 15:
 			a.reset()
 			continue
 		case 14:
 			pid = 1
+			gid = 0
 			fallthrough
 		default:
 			j = 1 << j
 		}
-		gid, ok := a.want(pid, 0, j)
+		gid, ok = a.want(pid, gid, j)
 		if !ok {
 			b.Fatal(j)
 		}
