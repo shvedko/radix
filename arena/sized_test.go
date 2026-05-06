@@ -45,3 +45,295 @@ func Benchmark_class14(b *testing.B) {
 		class14(uint32(i) & 0x20000)
 	}
 }
+
+func TestSized_want(t *testing.T) {
+	type args struct {
+		pid  uint64
+		size int
+	}
+	tests := []struct {
+		name  string
+		args  args
+		want  uint16
+		want1 bool
+	}{
+		// TODO: Add test cases.
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 1,
+			},
+			want:  0,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 1,
+			},
+			want:  1,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 1,
+			},
+			want:  2,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 2,
+			},
+			want:  4,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 4,
+			},
+			want:  8,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 2,
+			},
+			want:  6,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 1,
+			},
+			want:  3,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 8,
+			},
+			want:  16,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 16,
+			},
+			want:  32,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 8,
+			},
+			want:  24,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 32,
+			},
+			want:  64,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 64,
+			},
+			want:  128,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 128,
+			},
+			want:  256,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 256,
+			},
+			want:  512,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 512,
+			},
+			want:  1024,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 1024,
+			},
+			want:  2048,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 2048,
+			},
+			want:  4096,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 4096,
+			},
+			want:  8192,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: 8192,
+			},
+			want:  0,
+			want1: false,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  1,
+				size: 8192,
+			},
+			want:  0,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				size: pageGranules,
+			},
+			want:  0,
+			want1: false,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  1,
+				size: pageGranules,
+			},
+			want:  0,
+			want1: false,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  2,
+				size: pageGranules,
+			},
+			want:  0,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  2,
+				size: 1,
+			},
+			want:  0,
+			want1: false,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  1,
+				size: 1,
+			},
+			want:  8192,
+			want1: true,
+		},
+	}
+	a := &Sized{
+		Linked: Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}, {}, {}},
+			bitset2: []*bitset16k{{}, {}, {}},
+			pages:   []*page{{}, {}, {}},
+			hint:    0,
+		},
+		hints: [16]uint64{},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := a.want(tt.args.pid, tt.args.size)
+			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want1, ok)
+			if ok {
+				a.mark2(tt.args.pid, got, tt.args.size)
+			}
+		})
+	}
+}
+
+func BenchmarkSized_want(b *testing.B) {
+	a := &Sized{
+		Linked: Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}, {}},
+			bitset2: []*bitset16k{{}, {}},
+			pages:   []*page{{}, {}},
+			hint:    0,
+		},
+		hints: [16]uint64{},
+	}
+	for i := 0; i < b.N; i++ {
+		var pid uint64
+		j := i & 15
+		switch j {
+		case 15:
+			a.reset()
+			continue
+		case 14:
+			pid = 1
+			fallthrough
+		default:
+			j = 1 << j
+		}
+		gid, ok := a.want(pid, j)
+		if !ok {
+			b.Fatal(j)
+		}
+		a.mark(pid, gid, true)
+	}
+}

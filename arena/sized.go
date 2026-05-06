@@ -1,9 +1,12 @@
 package arena
 
-import "math/bits"
+import (
+	"math/bits"
+)
 
 type Sized struct {
 	Linked
+	hints [16]uint64
 }
 
 func get28(g *granule) (uint32, uint32) {
@@ -81,4 +84,146 @@ func class14(granules uint32) (class, remain, step uint32) {
 		remain = ((1 << class) - (granules)) >> (class - 4)
 	}
 	return
+}
+
+// AllocAligned ищет или выделяет свободный блок размером size гранул,
+// размер size обязан быть степенью двойки (1, 2, 4, ..., 16384).
+// Возвращает ID страницы (pid) и ID первой гранулы (gid).
+func (a *Sized) AllocAligned(class uint16) (uint64, uint16) {
+	size := (8) << class
+
+	// Проходим по существующим страницам сверху вниз
+	for pid := uint64(0); pid < uint64(len(a.pages)); pid++ {
+		// Быстрая проверка: если бит в bitset0 установлен, в странице нет места вообще
+		if (a.bitset0[pid>>6] & (1 << (pid & 63))) != 0 {
+			continue
+		}
+
+		gid, ok := a.want(pid, size)
+		if ok {
+			//	a.mark2(pid, gid, size)
+			return pid, gid
+		}
+	}
+
+	// Если места нет ни в одной странице, выделяем новую
+	pid, gid := a.alloc()
+	//	a.mark2(pid, gid, size)
+	return pid, gid
+}
+
+// aligns -- содержит маски, где 1 стоит только на позициях, кратных размеру блока.
+// Например, для size=8 это биты 0, 8, 16, 24, 32, 40, 48, 56.
+var aligns = [65]uint64{
+	1:  0xFFFFFFFFFFFFFFFF, // каждое смещение валидно
+	2:  0x5555555555555555, // 01010101...
+	4:  0x1111111111111111, // 00010001...
+	8:  0x0101010101010101, // 00000001...
+	16: 0x0001000100010001,
+	32: 0x0000000100000001,
+	64: 0x0000000000000001,
+}
+
+// want выполняет поиск внутри конкретной страницы
+func (a *Sized) want(pid uint64, size int) (uint16, bool) {
+	words := size >> 6
+
+	// Случай 1: Блок помещается внутри одного uint64 (64 гранулы и меньше)
+	if words == 0 {
+		for i := 0; i < len(a.bitset2[pid]); i++ {
+			mask := a.bitset2[pid][i]
+			if mask == ^uint64(0) {
+				continue
+			}
+
+			// SWAR алгоритм: "размазываем" занятые биты вправо.
+			// Если блок размера size имеет хотя бы один занятый бит (1),
+			// после этого цикла стартовый бит этого блока (кратный size) станет равен 1.
+			for s := 1; s < size; s <<= 1 {
+				mask |= mask >> s
+			}
+
+			// 2. Оставляем только биты, соответствующие кратным позициям (0, size, 2*size...)
+			// Пример для size=4: mask & 0x1111111111111111
+			// Формула маски: (111...) / ((1 << size) - 1)
+			// alignmentMask := uint64(0xFFFFFFFFFFFFFFFF) / ((1 << size) - 1)
+
+			// Оставляем только те биты, которые соответствуют выровненным позициям (0, size, 2*size...)
+			// и инвертируем, чтобы найти свободные (0 -> 1)
+			free := (^mask) & aligns[size]
+
+			if free != 0 {
+				// TrailingZeros64 находит индекс первого подходящего блока без циклов
+				shift := uint16(bits.TrailingZeros64(free))
+				return uint16(i*64) + shift, true
+			}
+		}
+		return 0, false
+	}
+
+	// Случай 2: Блок больше одного uint64 (128, 256... до 16384 гранул)
+	// Вычисляем, сколько целых слов uint64 в bitset2 занимает такой блок
+
+	if words == 256 {
+		if a.bitset0[pid>>6]&(1<<(pid&63)) == 0 &&
+			a.bitset1[pid][0] == 0 &&
+			a.bitset1[pid][1] == 0 &&
+			a.bitset1[pid][2] == 0 &&
+			a.bitset1[pid][3] == 0 {
+			return 0, true
+		}
+		return 0, false
+	}
+
+	// Шагаем сразу по индексам, кратным количеству слов (обеспечивает выравнивание)
+	for i := 0; i < 256; i += words {
+
+		//// Проверяем, свободен ли весь диапазон слов.
+		//// Обычно для больших блоков size это всего 2, 4 или 8 слов.
+		//allFree := true
+		//for j := 0; j < words; j++ {
+		//	if a.bitset2[pid][i+j] != 0 {
+		//		allFree = false
+		//		break
+		//	}
+		//}
+		//
+		//if allFree {
+		//	return uint16(i * 64), true
+		//}
+
+		// Быстрая проверка диапазона в bitset2
+		if a.bitset2[pid].empty(i, i+words) {
+			return uint16(i * 64), true
+		}
+	}
+
+	return 0, false
+}
+
+func (b *bitset16k) empty(from, to int) bool {
+	for i := range b[from:to] {
+		if b[from:to][i] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// isRangeFree проверяет, что в bitset2 на странице pid слова [start..start+count) равны 0
+func (a *Linked) isRangeFree(pid uint64, start, count int) bool {
+	// Для маленьких count (2, 4, 8) цикл эффективнее всего
+	// Для больших count компилятор Go применит SIMD оптимизации
+	target := a.bitset2[pid][start : start+count]
+	for i := range target {
+		if target[i] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (a *Sized) reset() {
+	a.Linked.reset()
+	a.hints = [16]uint64{}
 }
