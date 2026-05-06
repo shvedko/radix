@@ -49,6 +49,7 @@ func Benchmark_class14(b *testing.B) {
 func TestSized_want(t *testing.T) {
 	type args struct {
 		pid  uint64
+		gid  uint16
 		size int
 	}
 	tests := []struct {
@@ -283,6 +284,66 @@ func TestSized_want(t *testing.T) {
 			want:  8192,
 			want1: true,
 		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  0,
+				size: 1,
+			},
+			want:  12,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  11111,
+				size: 1,
+			},
+			want:  12288,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  12345,
+				size: 1,
+			},
+			want:  12345,
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  pageGranules - 600, // 15784
+				size: 512,
+			},
+			want:  15872, // + 512 = 16384, > 15784
+			want1: true,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  pageGranules - 1000,
+				size: 512,
+			},
+			want:  0,
+			want1: false,
+		},
+		{
+			name: "",
+			args: args{
+				pid:  0,
+				gid:  pageGranules - 1100,
+				size: 512,
+			},
+			want:  15360, // > 15284
+			want1: true,
+		},
 	}
 	a := &Sized{
 		Linked: Linked{
@@ -296,9 +357,9 @@ func TestSized_want(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := a.want(tt.args.pid, tt.args.size)
-			require.Equal(t, tt.want, got)
+			got, ok := a.want(tt.args.pid, tt.args.gid, tt.args.size)
 			require.Equal(t, tt.want1, ok)
+			require.Equal(t, tt.want, got)
 			if ok {
 				a.mark2(tt.args.pid, got, tt.args.size)
 			}
@@ -330,7 +391,7 @@ func BenchmarkSized_want(b *testing.B) {
 		default:
 			j = 1 << j
 		}
-		gid, ok := a.want(pid, j)
+		gid, ok := a.want(pid, 0, j)
 		if !ok {
 			b.Fatal(j)
 		}
