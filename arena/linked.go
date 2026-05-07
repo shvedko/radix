@@ -216,7 +216,7 @@ func (a *Linked) write(p []byte) uint64 {
 		if len(p) < 8 {
 			h[0] = 0xF0 | byte(len(p)) // T.5
 			copy(h[1:], p)
-			a.hint = pack(pid, gid)
+			a.hint = 1 + pack(pid, gid)
 			return rid
 		}
 

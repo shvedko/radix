@@ -1891,7 +1891,7 @@ func TestLinked_free(t *testing.T) {
 	n := c.read(p[:])
 	require.Equal(t, 1<<20, n)
 	require.Equal(t, cursor{a: &a, pid: 8, gid: 127, rem: 0, off: 2}, c)
-	require.Equal(t, pack(8, 127), a.hint)
+	require.Equal(t, pack(8, 128), a.hint)
 
 	a.free(id)
 	require.Equal(t, []uint64{0}, a.bitset0)

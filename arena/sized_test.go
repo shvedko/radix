@@ -452,34 +452,40 @@ func TestSized_write(t *testing.T) {
 	id := a.write(p[:1])
 	require.Equal(t, pack(0, 0), id)
 	require.Equal(t, &granule{0x01, 0x00, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
+	require.Equal(t, [16]uint64{1}, a.hints)
 
 	id = a.write(p[:2])
 	require.Equal(t, pack(0, 1), id)
 	require.Equal(t, &granule{0x02, 0x00, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
+	require.Equal(t, [16]uint64{2}, a.hints)
 
 	id = a.write(p[:4])
 	require.Equal(t, pack(0, 2), id)
 	require.Equal(t, &granule{0x04, 0x00, 0x1, 0x2, 0x3, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
+	require.Equal(t, [16]uint64{3}, a.hints)
 
 	id = a.write(p[:8192])
 	require.Equal(t, pack(0, 2048), id)
 	require.Equal(t, &granule{0xa0, 0x00, 0x0, 0x1, 0x2, 0x3, 0x4, 0x5}, a.granule(unpack(id)))
+	require.Equal(t, [16]uint64{3, 11: 3200}, a.hints)
 
 	id = a.write(p[:16384])
 	require.Equal(t, pack(0, 4096), id)
 	require.Equal(t, &granule{0xc0, 0x40, 0x0, 0x0, 0x1, 0x2, 0x3, 0x4}, a.granule(unpack(id)))
+	require.Equal(t, [16]uint64{3, 11: 3200, 12: 6400}, a.hints)
 
 }
 
 func BenchmarkSized_write(b *testing.B) {
 	var a Sized
-	var p [16384]byte
+	var p [8192]byte
 
+	b.SetBytes(8192)
 	for i := 0; i < b.N; i++ {
 		j := i % 16
 		if j == 0 {
 			a.reset()
 		}
-		a.write(p[:1024])
+		a.write(p[:])
 	}
 }
