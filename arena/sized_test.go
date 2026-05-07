@@ -442,38 +442,116 @@ func BenchmarkSized_want(b *testing.B) {
 }
 
 func TestSized_write(t *testing.T) {
-	var a Sized
-	var p [16384]byte
-
-	for i := range p {
-		p[i] = byte(i)
+	type want struct {
+		id    uint64
+		head  *granule
+		hints [16]uint64
 	}
-
-	id := a.write(p[:1])
-	require.Equal(t, pack(0, 0), id)
-	require.Equal(t, &granule{0x01, 0x00, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
-	require.Equal(t, [16]uint64{1}, a.hints)
-
-	id = a.write(p[:2])
-	require.Equal(t, pack(0, 1), id)
-	require.Equal(t, &granule{0x02, 0x00, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
-	require.Equal(t, [16]uint64{2}, a.hints)
-
-	id = a.write(p[:4])
-	require.Equal(t, pack(0, 2), id)
-	require.Equal(t, &granule{0x04, 0x00, 0x1, 0x2, 0x3, 0x0, 0x0, 0x0}, a.granule(unpack(id)))
-	require.Equal(t, [16]uint64{3}, a.hints)
-
-	id = a.write(p[:8192])
-	require.Equal(t, pack(0, 2048), id)
-	require.Equal(t, &granule{0xa0, 0x00, 0x0, 0x1, 0x2, 0x3, 0x4, 0x5}, a.granule(unpack(id)))
-	require.Equal(t, [16]uint64{3, 11: 3200}, a.hints)
-
-	id = a.write(p[:16384])
-	require.Equal(t, pack(0, 4096), id)
-	require.Equal(t, &granule{0xc0, 0x40, 0x0, 0x0, 0x1, 0x2, 0x3, 0x4}, a.granule(unpack(id)))
-	require.Equal(t, [16]uint64{3, 11: 3200, 12: 6400}, a.hints)
-
+	tests := []struct {
+		name string
+		size int
+		want want
+	}{
+		// TODO: Add test cases.
+		{
+			name: "",
+			size: 0,
+			want: want{id: 0, head: &granule{0x00}, hints: [16]uint64{1}},
+		}, {
+			name: "",
+			size: 1,
+			want: want{id: 1, head: &granule{0x01}, hints: [16]uint64{2}},
+		}, {
+			name: "",
+			size: 2,
+			want: want{id: 2, head: &granule{0x02}, hints: [16]uint64{3}},
+		}, {
+			name: "",
+			size: 7,
+			want: want{id: 3, head: &granule{0x07}, hints: [16]uint64{4}},
+		}, {
+			name: "",
+			size: 8,
+			want: want{id: 4, head: &granule{0x08}, hints: [16]uint64{4, 6}},
+		}, {
+			name: "",
+			size: 9,
+			want: want{id: 6, head: &granule{0x09}, hints: [16]uint64{4, 8}},
+		}, {
+			name: "",
+			size: 17,
+			want: want{id: 8, head: &granule{0x11}, hints: [16]uint64{4, 8, 11}},
+		}, {
+			name: "",
+			size: 31,
+			want: want{id: 12, head: &granule{0x1f}, hints: [16]uint64{4, 8, 16}},
+		}, {
+			name: "",
+			size: 37,
+			want: want{id: 16, head: &granule{0x25}, hints: [16]uint64{4, 8, 16, 21}},
+		}, {
+			name: "",
+			size: 41,
+			want: want{id: 24, head: &granule{0x29}, hints: [16]uint64{4, 8, 16, 30}},
+		}, {
+			name: "",
+			size: 49,
+			want: want{id: 32, head: &granule{0x31}, hints: [16]uint64{4, 8, 16, 39}},
+		}, {
+			name: "",
+			size: 57,
+			want: want{id: 40, head: &granule{0x39}, hints: [16]uint64{4, 8, 16, 48}},
+		}, {
+			name: "",
+			size: 65,
+			want: want{id: 48, head: &granule{0x41}, hints: [16]uint64{4, 8, 16, 48, 57}},
+		}, {
+			name: "",
+			size: 75,
+			want: want{id: 64, head: &granule{0x4b}, hints: [16]uint64{4, 8, 16, 48, 74}},
+		}, {
+			name: "",
+			size: 83,
+			want: want{id: 80, head: &granule{0x53}, hints: [16]uint64{4, 8, 16, 48, 91}},
+		}, {
+			name: "",
+			size: 91,
+			want: want{id: 96, head: &granule{0x5b}, hints: [16]uint64{4, 8, 16, 48, 108}},
+		}, {
+			name: "",
+			size: 99,
+			want: want{id: 112, head: &granule{0x63}, hints: [16]uint64{4, 8, 16, 48, 125}},
+		}, {
+			name: "",
+			size: 105,
+			want: want{id: 128, head: &granule{0x69}, hints: [16]uint64{4, 8, 16, 48, 142}},
+		}, {
+			name: "",
+			size: 113,
+			want: want{id: 144, head: &granule{0x71}, hints: [16]uint64{4, 8, 16, 48, 159}},
+		}, {
+			name: "",
+			size: 123,
+			want: want{id: 160, head: &granule{0x7b}, hints: [16]uint64{4, 8, 16, 48, 176}},
+		}, {
+			name: "",
+			size: 262140,
+			want: want{id: ^uint64(0), hints: [16]uint64{4, 8, 16, 48, 176}},
+		},
+	}
+	var a Sized
+	var p [1 << 20]byte
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := a.write(p[:tt.size])
+			require.Equal(t, tt.want.id, got)
+			require.Equal(t, tt.want.hints, a.hints)
+			if got == ^uint64(0) {
+				return
+			}
+			require.Equal(t, tt.want.head, a.granule(unpack(got)))
+		})
+	}
 }
 
 func BenchmarkSized_write(b *testing.B) {
@@ -488,4 +566,8 @@ func BenchmarkSized_write(b *testing.B) {
 		}
 		a.write(p[:])
 	}
+}
+
+func TestSized_write1(t *testing.T) {
+
 }

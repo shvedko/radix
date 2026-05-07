@@ -164,11 +164,15 @@ func (b *bitset16k) empty(from, to uint16) bool {
 }
 
 func (a *Sized) write(p []byte) uint64 {
+	if len(p) > 0x3FFFF {
+		return ^uint64(0)
+	}
+
 	var g granule
 
 	o := put28(&g, len(p))
 	if o != 0 {
-		c, r, w := class14(1 + uint16(o-1+len(p))>>3)
+		c, r, w := class14(uint16((o-1+len(p))>>3 + 1))
 		if c < 15 {
 			pid, gid := unpack(a.hints[c])
 			pid, gid, n := a.class(c, pid, gid)
