@@ -2,6 +2,7 @@ package arena
 
 import (
 	"math/bits"
+	"unsafe"
 )
 
 type Sized struct {
@@ -9,24 +10,24 @@ type Sized struct {
 	hints [16]uint64
 }
 
-func get28(g *granule) (uint32, uint32) {
+func get28(g *granule) (int, int) {
 	if g[0]&0x80 == 0x00 { // 0.......
-		return uint32(g[0]), 1
+		return int(g[0]), 1
 	}
 	if g[0]&0xC0 == 0x80 { // 10...... ........
-		return uint32(g[0]&0x3F)<<8 | uint32(g[1]), 2
+		return int(g[0]&0x3F)<<8 | int(g[1]), 2
 	}
 	if g[0]&0xE0 == 0xC0 { // 110..... ........ ........
-		return uint32(g[0]&0x1F)<<16 | uint32(g[1])<<8 | uint32(g[2]), 3
+		return int(g[0]&0x1F)<<16 | int(g[1])<<8 | int(g[2]), 3
 	}
 	if g[0]&0xF0 == 0xE0 { // 1110.... ........ ........ ........
-		return uint32(g[0]&0x0F)<<24 | uint32(g[1])<<16 | uint32(g[2])<<8 | uint32(g[3]), 4
+		return int(g[0]&0x0F)<<24 | int(g[1])<<16 | int(g[2])<<8 | int(g[3]), 4
 	}
 	return 0, 0
 }
 
-func put28(g *granule, size uint32) uint32 {
-	n := bits.Len32(size)
+func put28(g *granule, size int) int {
+	n := bits.Len64(uint64(size))
 	if n < 8 {
 		g[0] = byte(size)
 		return 1
@@ -86,7 +87,7 @@ func class14(granules uint16) (class uint8, remain, step uint16) {
 	return
 }
 
-func (a *Sized) class(class uint8, pid uint64, gid uint16) (uint64, uint16) {
+func (a *Sized) class(class uint8, pid uint64, gid uint16) (uint64, uint16, uint16) {
 	granules := uint16(1) << class
 
 	var ok bool
@@ -96,12 +97,13 @@ func (a *Sized) class(class uint8, pid uint64, gid uint16) (uint64, uint16) {
 		}
 		gid, ok = a.want(pid, gid, granules)
 		if ok {
-			return pid, gid
+			return pid, gid, granules
 		}
 		pid++
 	}
 
-	return a.alloc()
+	a.alloc()
+	return pid, gid, granules
 }
 
 func (a *Sized) want(pid uint64, gid uint16, granules uint16) (uint16, bool) {
@@ -159,6 +161,42 @@ func (b *bitset16k) empty(from, to uint16) bool {
 		}
 	}
 	return true
+}
+
+func (a *Sized) write(p []byte) uint64 {
+	var g granule
+
+	o := put28(&g, len(p))
+	if o != 0 {
+		c, r, w := class14(1 + uint16(o-1+len(p))>>3)
+		if c < 15 {
+			pid, gid := unpack(a.hints[c])
+			pid, gid, n := a.class(c, pid, gid)
+
+			h := a.granule(pid, gid)
+			h[0] = g[0]
+			h[1] = g[1]
+			h[2] = g[2]
+			h[3] = g[3]
+
+			n -= r * w
+			b := unsafe.Slice(&h[0], n<<3)[o:]
+			a.mark2(pid, gid, n)
+			copy(b, p)
+
+			return pack(pid, gid)
+		}
+	}
+
+	return ^uint64(0)
+}
+
+func (a *Sized) free(id uint64) {
+
+}
+
+func (a *Sized) open(id uint64) cursor {
+	return cursor{}
 }
 
 func (a *Sized) reset() {

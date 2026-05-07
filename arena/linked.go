@@ -239,7 +239,7 @@ func (a *Linked) write(p []byte) uint64 {
 					x := min(size-i, pageGranules-gid)
 					a.mark2(pid, gid, x)
 
-					b := unsafe.Slice((*byte)(unsafe.Pointer(&a.pages[pid][gid])), x<<3)
+					b := unsafe.Slice(&a.pages[pid][gid][0], x<<3)
 					copy(b, p)
 					p = p[x<<3:]
 
@@ -399,7 +399,7 @@ func (c *cursor) read(p []byte) int {
 		var jump uint64
 		if c.rem > 0 {
 			m := min(c.rem, pageGranules-c.gid)
-			b := unsafe.Slice((*byte)(unsafe.Pointer(h)), m<<3)
+			b := unsafe.Slice(&h[0], m<<3)
 			x := copy(p[n:], b[c.off:])
 			n += x
 			x += int(c.off)
