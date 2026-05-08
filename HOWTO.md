@@ -28,7 +28,6 @@ API Surface:
 * Search(prefixes ...[]byte) Iterator
 * Reset(): Mass-reclaim all pages via pool.reset().
 
-Вот актуальный технический дайджест пакета radix. Это твой "контракт" и база, на которой мы строим Table и Tablespace.
 ------------------------------
 ## 🚀 Radix[T] API Digest
 Constructor:
