@@ -568,6 +568,77 @@ func BenchmarkSized_write(b *testing.B) {
 	}
 }
 
-func TestSized_write1(t *testing.T) {
+func BenchmarkSized_read(b *testing.B) {
+	var a Sized
+	var p [8192]byte
+	id := a.write(p[:])
+
+	b.SetBytes(8192)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c := a.open(id)
+		n := c.read(p[:])
+		if n != len(p) {
+			b.Fatal(n)
+		}
+	}
+}
+
+func TestSized_open(t *testing.T) {
+	var a Sized
+	var p [1024]byte
+
+	id := a.write(p[:20])
+	require.Equal(t, pack(0, 0), id)
+	require.Equal(t, [16]uint64{0, 0, 3}, a.hints)
+
+	c := a.open(id)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 3, off: 1}, size: 20}, c)
+
+	n := c.read(p[:1])
+	require.Equal(t, 1, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 3, off: 2}, size: 19}, c)
+
+	n = c.read(p[:2])
+	require.Equal(t, 2, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 3, off: 4}, size: 17}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 3, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 3, off: 7}, size: 14}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 3, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 2, off: 2}, size: 11}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 3, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 0, rem: 2, off: 5}, size: 8}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 3, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 1, rem: 1, off: 0}, size: 5}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 3, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 1, rem: 1, off: 3}, size: 2}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 2, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 1, rem: 1, off: 5}, size: 0}, c)
+
+	n = c.read(p[:3])
+	require.Equal(t, 0, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 1, rem: 1, off: 5}, size: 0}, c)
+
+	id = a.write(p[:])
+	require.Equal(t, pack(0, 256), id)
+
+	c = a.open(id)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 256, rem: 129, off: 2}, size: 1024}, c)
+
+	n = c.read(p[:])
+	require.Equal(t, 1024, n)
+	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 256, rem: 1, off: 2}, size: 0}, c)
 
 }

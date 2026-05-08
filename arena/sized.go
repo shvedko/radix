@@ -202,8 +202,32 @@ func (a *Sized) free(id uint64) {
 
 }
 
-func (a *Sized) open(id uint64) cursor {
-	return cursor{}
+type reader struct {
+	size int
+	cursor
+}
+
+func (r *reader) read(p []byte) int {
+	n := len(p)
+	if n > r.size {
+		n = r.size
+	}
+	n = r.cursor.read(p[:n])
+	r.size -= n
+	return n
+}
+
+func (a *Sized) open(id uint64) reader {
+	c := a.Linked.open(id)
+	g := a.granule(c.pid, c.gid)
+	n, h := get28(g)
+	u, r, w := class14(uint16((n+h-1)>>3 + 1))
+	c.rem = 1<<u - r*w - w + 1
+	c.off = uint8(h)
+	return reader{
+		cursor: c,
+		size:   n,
+	}
 }
 
 func (a *Sized) reset() {
