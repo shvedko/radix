@@ -184,8 +184,8 @@ func (a *Sized) write(p []byte) uint64 {
 			h[3] = g[3]
 
 			n -= r * w
-			b := unsafe.Slice(&h[o], n<<3)
-			copy(b, p)
+			b := unsafe.Slice(&h[0], n<<3)
+			copy(b[o:], p)
 
 			rid := pack(pid, gid)
 			a.hints[c] = rid + uint64(n)
@@ -196,10 +196,6 @@ func (a *Sized) write(p []byte) uint64 {
 	}
 
 	return ^uint64(0)
-}
-
-func (a *Sized) free(id uint64) {
-
 }
 
 type reader struct {
@@ -227,6 +223,17 @@ func (a *Sized) open(id uint64) reader {
 	return reader{
 		cursor: c,
 		size:   n,
+	}
+}
+
+func (a *Sized) free(id uint64) {
+	pid, gid := unpack(id)
+	g := a.granule(pid, gid)
+	n, h := get28(g)
+	c, r, w := class14(uint16((n+h-1)>>3 + 1))
+	a.unmark2(pid, gid, 1<<c-r*w)
+	if id < a.hints[c] {
+		a.hints[c] = id
 	}
 }
 

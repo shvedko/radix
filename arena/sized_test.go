@@ -642,3 +642,37 @@ func TestSized_open(t *testing.T) {
 	require.Equal(t, reader{cursor: cursor{a: &a.Linked, pid: 0, gid: 256, rem: 1, off: 2}, size: 0}, c)
 
 }
+
+func TestSized_free(t *testing.T) {
+	var a Sized
+	var p [1024]byte
+
+	id := a.write(p[:20])
+	require.Equal(t, pack(0, 0), id)
+	require.Equal(t, [16]uint64{0, 0, 3}, a.hints)
+	require.Equal(t, &granule{0x14, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, a.granule(0, 0))
+
+	a.free(id)
+	require.Equal(t, Sized{
+		Linked: Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}},
+			bitset2: []*bitset16k{{}},
+			pages:   []*page{{{0x14, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}}},
+			hint:    0,
+		},
+		hints: [16]uint64{},
+	}, a)
+
+	a.free(id)
+	require.Equal(t, Sized{
+		Linked: Linked{
+			bitset0: []uint64{0},
+			bitset1: []*bitset256{{}},
+			bitset2: []*bitset16k{{}},
+			pages:   []*page{{{0x14, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}}},
+			hint:    0,
+		},
+		hints: [16]uint64{},
+	}, a)
+}
