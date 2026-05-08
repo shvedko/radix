@@ -50,3 +50,13 @@ BenchmarkLinked_read/1MB-16                        33733             36712 ns/op
 BenchmarkLinked_free/1MB-16                        80812             14828 ns/op        70717.88 MB/s          0 B/op          0 allocs/op
 PASS
 ```
+
+```
+goos: windows
+goarch: amd64
+cpu: 11th Gen Intel(R) Core(TM) i7-11700F @ 2.50GHz
+BenchmarkSized_want-16          100000000               10.69 ns/op            0 B/op          0 allocs/op
+BenchmarkSized_write-16          6078380               198.0 ns/op      41379.36 MB/s          0 B/op          0 allocs/op
+BenchmarkSized_read-16           4675914               255.1 ns/op      32111.91 MB/s          0 B/op          0 allocs/op
+PASS
+```
