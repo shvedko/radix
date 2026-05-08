@@ -184,11 +184,12 @@ func (a *Sized) write(p []byte) uint64 {
 			h[3] = g[3]
 
 			n -= r * w
+			b := unsafe.Slice(&h[o], n<<3)
+			copy(b, p)
+
 			rid := pack(pid, gid)
 			a.hints[c] = rid + uint64(n)
-			b := unsafe.Slice(&h[0], n<<3)[o:]
 			a.mark2(pid, gid, n)
-			copy(b, p)
 
 			return rid
 		}
