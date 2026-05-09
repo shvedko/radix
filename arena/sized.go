@@ -237,6 +237,16 @@ func (a *Sized) free(id uint64) {
 	}
 }
 
+func (a *Sized) bytes(id uint64) []byte {
+	pid, gid := unpack(id)
+	g := a.granule(pid, gid)
+	n, h := get28(g)
+	if h == 0 {
+		return nil
+	}
+	return unsafe.Slice(&g[h], n)
+}
+
 func (a *Sized) reset() {
 	a.Linked.reset()
 	a.hints = [16]uint64{}
