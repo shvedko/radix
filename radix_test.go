@@ -3,10 +3,11 @@ package radix_test
 import (
 	"fmt"
 	"math/rand"
-	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/shvedko/radix"
 )
@@ -502,17 +503,15 @@ func TestRadix_Search(t *testing.T) {
 			for i.Next() {
 				got = append(got, i.Get()...)
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Search() = %v, want %v", got, tt.want)
-			}
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestIterator_Next(t *testing.T) {
-	if i := radix.New[int]().Search(); i.Next() {
-		t.Fatal(0)
-	}
+	i := radix.New[int]().Search()
+	ok := i.Next()
+	require.False(t, ok)
 }
 
 func ExampleIterator_Remove() {
@@ -920,67 +919,45 @@ func TestRadix_InsertPath(t *testing.T) {
 	r := radix.New[float64]()
 
 	i, ok := r.InsertPath(88.1, false, []byte("City0"), []byte("Street88"), []byte{1})
-	if !ok {
-		t.Fatal()
-	}
+	require.True(t, ok)
+
 	j := r.Search([]byte("City0"), []byte("Street88"), []byte{1})
 	j.Next()
-	if !reflect.DeepEqual(i, j) {
-		t.Error(i)
-		t.Error(j)
-	}
+	require.Equal(t, i, j)
 
 	i, ok = r.InsertPath(80.2, false, []byte("City0"), []byte("Street80"), []byte{2})
-	if !ok {
-		t.Fatal()
-	}
+	require.True(t, ok)
+
 	j = r.Search([]byte("City0"), []byte("Street80"), []byte{2})
 	j.Next()
-	if !reflect.DeepEqual(i, j) {
-		t.Error(i)
-		t.Error(j)
-	}
+	require.Equal(t, i, j)
 
 	i, ok = r.InsertPath(8.11, false, []byte("City0"), []byte("Street8"), []byte{1, 1})
-	if !ok {
-		t.Fatal()
-	}
+	require.True(t, ok)
+
 	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 1})
 	j.Next()
-	if !reflect.DeepEqual(i, j) {
-		t.Error(i)
-		t.Error(j)
-	}
+	require.Equal(t, i, j)
 
 	i, ok = r.InsertPath(8.13, false, []byte("City0"), []byte("Street8"), []byte{1, 3})
-	if !ok {
-		t.Fatal()
-	}
+	require.True(t, ok)
+
 	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 3})
 	j.Next()
-	if !reflect.DeepEqual(i, j) {
-		t.Error(i)
-		t.Error(j)
-	}
+	require.Equal(t, i, j)
 
 	i, ok = r.InsertPath(8.12, false, []byte("City0"), []byte("Street8"), []byte{1, 2})
-	if !ok {
-		t.Fatal()
-	}
+	require.True(t, ok)
+
 	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2})
 	j.Next()
-	if !reflect.DeepEqual(i, j) {
-		t.Error(i)
-		t.Error(j)
-	}
+	require.Equal(t, i, j)
 
 	i.Remove()
 
 	j = r.Search([]byte("City0"), []byte("Street8"), []byte{1, 2})
 	ok = j.Next()
-	if ok {
-		t.Fatal()
-	}
+	require.False(t, ok)
 }
 
 func BenchmarkRadix_Random(b *testing.B) {
@@ -1035,4 +1012,506 @@ func BenchmarkRadix_Random(b *testing.B) {
 			})
 		})
 	}
+}
+
+func TestIterator_Commit(t *testing.T) {
+	r := radix.New[int]()
+
+	// 1. insert
+
+	transient1 := [][]byte{{0, 1, 2, 3, 4}, {9, 8, 7, 6, 5}}
+
+	t.Log(1, "INSERT", transient1)
+
+	i, ok := r.InsertPath(1, false, transient1...)
+	require.True(t, ok)
+	require.Equal(t, []int{1}, i.Get())
+
+	m := map[uint32][]*byte{}
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &transient1[0][0], m[1][0])
+	require.Same(t, &transient1[1][0], m[3][0])
+
+	permanent1 := [][]byte{{0, 1, 2, 3, 4}, {9, 8, 7, 6, 5}}
+
+	t.Log(1, "COMMIT", permanent1)
+
+	i.Commit(permanent1)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0])
+	require.Same(t, &permanent1[1][0], m[3][0])
+
+	// 2. repeat
+
+	transient2 := [][]byte{{0, 1, 2, 3, 4}, {9, 8, 7, 6, 5}}
+
+	t.Log(2, "INSERT", transient2)
+
+	i, ok = r.InsertPath(2, false, transient2...)
+	require.True(t, ok)
+	require.Equal(t, []int{1, 2}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0])
+	require.Same(t, &permanent1[1][0], m[3][0])
+
+	permanent2 := [][]byte{{0, 1, 2, 3, 4}, {9, 8, 7, 6, 5}}
+
+	t.Log(2, "COMMIT", permanent2)
+
+	i.Commit(permanent2)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0])
+	require.Same(t, &permanent1[1][0], m[3][0])
+
+	// 3. split
+
+	transient3 := [][]byte{{0, 1, 5, 6, 7}, {9, 8, 7, 6, 5}}
+
+	t.Log(3, "INSERT", transient3)
+
+	i, ok = r.InsertPath(3, false, transient3...)
+	require.True(t, ok)
+	require.Equal(t, []int{3}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &transient3[0][2], m[2][1]) //
+	require.Same(t, &transient3[1][0], m[4][1]) // 3
+
+	permanent3 := [][]byte{{0, 1, 5, 6, 7}, {9, 8, 7, 6, 5}}
+
+	t.Log(3, "COMMIT", permanent3)
+
+	i.Commit(permanent3)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[1][0], m[4][1]) // 3
+
+	// 4. repeat, repeat, repeat
+
+	transient4 := [][]byte{{0, 1, 5, 6, 7}, {9, 8, 7, 6, 5}}
+
+	t.Log(4, "INSERT", transient4)
+
+	i, ok = r.InsertPath(4, false, transient4...)
+	require.True(t, ok)
+	require.Equal(t, []int{3, 4}, i.Get())
+
+	t.Log(4, "INSERT", transient4)
+
+	i, ok = r.InsertPath(4, false, transient4...)
+	require.True(t, ok)
+	require.Equal(t, []int{3, 4, 4}, i.Get())
+
+	t.Log(4, "INSERT", transient4)
+
+	i, ok = r.InsertPath(4, false, transient4...)
+	require.True(t, ok)
+	require.Equal(t, []int{3, 4, 4, 4}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[1][0], m[4][1]) // 3,4,4,4
+
+	permanent4 := [][]byte{{0, 1, 5, 6, 7}, {9, 8, 7, 6, 5}}
+
+	t.Log(4, "COMMIT", permanent4)
+
+	i.Commit(permanent4)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[1][0], m[4][1]) // 3,4,4,4
+
+	// 5. split
+
+	transient5 := [][]byte{{0, 1, 5, 8, 9}, {9, 8, 7, 6, 5}}
+
+	t.Log(5, "INSERT", transient5)
+
+	i, ok = r.InsertPath(5, false, transient5...)
+	require.True(t, ok)
+	require.Equal(t, []int{5}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[0][3], m[3][0]) //
+	require.Same(t, &permanent3[1][0], m[5][0]) // 3,4,4,4
+	require.Same(t, &transient5[0][3], m[3][1]) //
+	require.Same(t, &transient5[1][0], m[5][1]) // 5
+
+	permanent5 := [][]byte{{0, 1, 5, 8, 9}, {9, 8, 7, 6, 5}}
+
+	t.Log(5, "COMMIT", permanent5)
+
+	i.Commit(permanent5)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[0][3], m[3][0]) //
+	require.Same(t, &permanent3[1][0], m[5][0]) // 3,4,4,4
+	require.Same(t, &permanent5[0][3], m[3][1]) //
+	require.Same(t, &permanent5[1][0], m[5][1]) // 5
+
+	// 6. bite
+
+	transient6 := [][]byte{{0, 1, 5, 8, 9}, {9, 8, 7}}
+
+	t.Log(6, "INSERT", transient6)
+
+	i, ok = r.InsertPath(6, false, transient6...)
+	require.True(t, ok)
+	require.Equal(t, []int{6}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[0][3], m[3][0]) //
+	require.Same(t, &permanent3[1][0], m[5][0]) // 3,4,4,4
+	require.Same(t, &permanent5[0][3], m[3][1]) //
+	require.Same(t, &permanent5[1][0], m[5][1]) // 6
+	require.Same(t, &permanent5[1][3], m[6][0]) // 5
+
+	permanent6 := [][]byte{{0, 1, 5, 8, 9}, {9, 8, 7}}
+
+	t.Log(6, "COMMIT", permanent6)
+
+	i.Commit(permanent6)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent1[0][0], m[1][0]) //
+	require.Same(t, &permanent1[0][2], m[2][0]) //
+	require.Same(t, &permanent1[1][0], m[4][0]) // 1,2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[0][3], m[3][0]) //
+	require.Same(t, &permanent3[1][0], m[5][0]) // 3,4,4,4
+	require.Same(t, &permanent5[0][3], m[3][1]) //
+	require.Same(t, &permanent5[1][0], m[5][1]) // 6
+	require.Same(t, &permanent5[1][3], m[6][0]) // 5
+
+	r.Dump(newTestDumper[int](t))
+
+	// 7. delete 1
+
+	t.Log(7, "REMOVE", transient1)
+
+	i = r.Search(transient1...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{1, 2}, i.Get())
+
+	i.Commit(permanent1)
+	i.Commit(permanent2)
+	i.Delete(0)
+	require.Equal(t, []int{2}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent2[0][0], m[1][0]) //
+	require.Same(t, &permanent2[0][2], m[2][0]) //
+	require.Same(t, &permanent2[1][0], m[4][0]) // 2
+	require.Same(t, &permanent3[0][2], m[2][1]) //
+	require.Same(t, &permanent3[0][3], m[3][0]) //
+	require.Same(t, &permanent3[1][0], m[5][0]) // 3,4,4,4
+	require.Same(t, &permanent5[0][3], m[3][1]) //
+	require.Same(t, &permanent5[1][0], m[5][1]) // 6
+	require.Same(t, &permanent5[1][3], m[6][0]) // 5
+
+	// 8. delete 2
+
+	t.Log(8, "REMOVE", transient2)
+
+	i = r.Search(transient2...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{2}, i.Get())
+	require.Len(t, i.Back().Get(), 0)
+	i.Delete(0)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent3[0][0], m[1][0]) //
+	require.Same(t, &permanent3[0][3], m[2][0]) //
+	require.Same(t, &permanent3[1][0], m[4][0]) // 3,4,4,4
+	require.Same(t, &permanent5[0][3], m[2][1]) //
+	require.Same(t, &permanent5[1][0], m[4][1]) // 6
+	require.Same(t, &permanent5[1][3], m[5][0]) // 5
+
+	// 9. delete first and last 4
+
+	t.Log(9, "REMOVE", transient4)
+
+	i = r.Search(transient4...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{3, 4, 4, 4}, i.Get())
+	i.Delete(3)
+	require.Equal(t, []int{3, 4, 4}, i.Get())
+	i.Delete(1)
+	require.Equal(t, []int{3, 4}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent3[0][0], m[1][0]) //
+	require.Same(t, &permanent3[0][3], m[2][0]) //
+	require.Same(t, &permanent3[1][0], m[4][0]) // 3,4
+	require.Same(t, &permanent5[0][3], m[2][1]) //
+	require.Same(t, &permanent5[1][0], m[4][1]) // 6
+	require.Same(t, &permanent5[1][3], m[5][0]) // 5
+
+	// 10. delete 3
+
+	t.Log(10, "REMOVE", transient3)
+
+	i = r.Search(transient3...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{3, 4}, i.Get())
+	i.Commit(permanent3)
+	i.Commit(permanent4)
+	i.Delete(0)
+	require.Equal(t, []int{4}, i.Get())
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent4[0][0], m[1][0]) //
+	require.Same(t, &permanent4[0][3], m[2][0]) //
+	require.Same(t, &permanent4[1][0], m[4][0]) // 4
+	require.Same(t, &permanent5[0][3], m[2][1]) //
+	require.Same(t, &permanent5[1][0], m[4][1]) // 6
+	require.Same(t, &permanent5[1][3], m[5][0]) // 5
+
+	// 11. delete 5
+
+	t.Log(11, "REMOVE", transient5)
+
+	i = r.Search(transient5...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{5}, i.Get())
+	require.Equal(t, []int{6}, i.Back().Get())
+	i.Commit(permanent5)
+	i.Commit(permanent6)
+	i.Delete(0)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent4[0][0], m[1][0]) //
+	require.Same(t, &permanent4[0][3], m[2][0]) //
+	require.Same(t, &permanent4[1][0], m[4][0]) // 4
+	require.Same(t, &permanent6[0][3], m[2][1]) //
+	require.Same(t, &permanent6[1][0], m[4][1]) // 6
+
+	r.Dump(newTestDumper[int](t))
+
+	// 12. delete 4
+
+	t.Log(12, "REMOVE", transient4)
+
+	i = r.Search(transient4...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{4}, i.Get())
+	require.Len(t, i.Back().Get(), 0)
+	i.Delete(0)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+	require.Same(t, &permanent6[0][0], m[1][0]) //
+	require.Same(t, &permanent6[1][0], m[3][0]) // 6
+
+	// 13. delete 6
+
+	t.Log(13, "REMOVE", transient6)
+
+	i = r.Search(transient6...)
+	require.True(t, i.Next())
+	require.Equal(t, []int{6}, i.Get())
+	require.Len(t, i.Back().Get(), 0)
+	i.Delete(0)
+
+	clear(m)
+
+	r.Dump(func(p []byte, l uint32, _ bool, v []int) bool {
+		if len(p) > 0 {
+			n := len(m[l])
+			t.Log(l, n, p, &p[0], v)
+			m[l] = append(m[l], &p[0])
+		}
+		return true
+	})
+
+	require.True(t, r.Empty())
 }

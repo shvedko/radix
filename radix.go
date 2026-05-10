@@ -471,11 +471,36 @@ func (t *Iterator[T]) append(i uint8, m uint64, f *frame[T]) {
 	})
 }
 
-func (t *Iterator[T]) Get() []T {
+func (t Iterator[T]) Get() []T {
 	if len(t.frames) == 0 {
 		return nil
 	}
 	return t.frames[len(t.frames)-1].n.values
+}
+
+func (t Iterator[T]) Back() Iterator[T] {
+	if len(t.frames) > 0 {
+		t.frames = t.frames[:len(t.frames)-1]
+	}
+	return t
+}
+
+func (t *Iterator[T]) Commit(prefixes [][]byte) {
+	for i := range t.frames {
+		f := &t.frames[i]
+		n := f.n
+		if uint32(len(prefixes[f.layer])) < f.offset {
+			continue
+		}
+		if uint32(len(n.prefix)) == 0 {
+			continue
+		}
+		start := f.offset - uint32(len(n.prefix))
+		if &n.prefix[0] == &t.prefixes[f.layer][start] {
+			n.prefix = prefixes[f.layer][start:f.offset]
+		}
+	}
+	t.prefixes = prefixes
 }
 
 func (t *Iterator[T]) Remove() {
@@ -501,36 +526,36 @@ func (t *Iterator[T]) Rollback() {
 
 func (t *Iterator[T]) merge(v int) {
 	i := len(t.frames) - 1
-	n := &t.frames[i]
+	f := &t.frames[i]
 
 	switch v {
 	case -2:
-		n.n.zero()
-		n.n.values = n.n.values[:0]
+		f.n.zero()
+		f.n.values = f.n.values[:0]
 	case -1:
-		v += len(n.n.values)
+		v += len(f.n.values)
 		fallthrough
 	default:
-		if v >= len(n.n.values) {
+		if v >= len(f.n.values) {
 			return
 		}
-		var zero T
-		n.n.values[len(n.n.values)-1] = zero
-		n.n.values = append(n.n.values[:v], n.n.values[v+1:]...)
+		v += copy(f.n.values[v:], f.n.values[v+1:])
+		clear(f.n.values[v:])
+		f.n.values = f.n.values[:v]
 	}
 
-	for n.n.empty() && i > 0 {
+	for f.n.empty() && i > 0 {
 		p := &t.frames[i-1]
 		p.mode = 1
-		if p.n.next == n.n {
+		if p.n.next == f.n {
 			p.n.next = nil
 		} else {
-			p.n.remove(n.n.prefix[0])
+			p.n.remove(f.n.prefix[0])
 		}
 		t.frames = t.frames[:i]
 		i--
-		n = &t.frames[i]
-		n.n.merge()
+		f = &t.frames[i]
+		f.n.merge()
 	}
 }
 
@@ -570,12 +595,9 @@ func (n *Radix[T]) Reset() {
 }
 
 func (n *Radix[T]) zero() {
-	//if len(n.values) == 0 {
-	//	return
-	//}
-	//var zero T
-	//for j := range n.values {
-	//	n.values[j] = zero
-	//}
 	clear(n.values)
+}
+
+func (n *Radix[T]) Empty() bool {
+	return n.empty()
 }
