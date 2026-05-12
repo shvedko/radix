@@ -1328,6 +1328,8 @@ func TestIterator_Commit(t *testing.T) {
 	i = r.Search(transient1...)
 	require.True(t, i.Next())
 	require.Equal(t, []int{1, 2}, i.Get())
+	require.Len(t, i.Up().Get(), 0)
+	require.Equal(t, []int{3, 4, 4, 4}, i.Down().Get())
 
 	i.Commit(permanent1)
 	i.Commit(permanent2)
@@ -1362,6 +1364,7 @@ func TestIterator_Commit(t *testing.T) {
 	require.True(t, i.Next())
 	require.Equal(t, []int{2}, i.Get())
 	require.Len(t, i.Up().Get(), 0)
+	require.Equal(t, []int{3, 4, 4, 4}, i.Down().Get())
 
 	i.Delete(0)
 
@@ -1389,6 +1392,8 @@ func TestIterator_Commit(t *testing.T) {
 	i = r.Search(transient4...)
 	require.True(t, i.Next())
 	require.Equal(t, []int{3, 4, 4, 4}, i.Get())
+	require.Len(t, i.Up().Get(), 0)
+	require.Equal(t, []int{6}, i.Down().Get())
 
 	i.Delete(3)
 	require.Equal(t, []int{3, 4, 4}, i.Get())
@@ -1420,6 +1425,8 @@ func TestIterator_Commit(t *testing.T) {
 	i = r.Search(transient3...)
 	require.True(t, i.Next())
 	require.Equal(t, []int{3, 4}, i.Get())
+	require.Len(t, i.Up().Get(), 0)
+	require.Equal(t, []int{6}, i.Down().Get())
 
 	i.Commit(permanent3)
 	i.Commit(permanent4)
@@ -1451,6 +1458,7 @@ func TestIterator_Commit(t *testing.T) {
 	require.True(t, i.Next())
 	require.Equal(t, []int{5}, i.Get())
 	require.Equal(t, []int{6}, i.Up().Get())
+	require.Len(t, i.Down().Get(), 0)
 
 	i.Commit(permanent5)
 	i.Commit(permanent6)
@@ -1482,7 +1490,10 @@ func TestIterator_Commit(t *testing.T) {
 	require.True(t, i.Next())
 	require.Equal(t, []int{4}, i.Get())
 	require.Len(t, i.Up().Get(), 0)
+	require.Equal(t, []int{6}, i.Down().Get())
 
+	i.Commit(transient4)
+	i.Commit(transient6)
 	i.Delete(0)
 
 	clear(m)
@@ -1506,6 +1517,7 @@ func TestIterator_Commit(t *testing.T) {
 	require.True(t, i.Next())
 	require.Equal(t, []int{6}, i.Get())
 	require.Len(t, i.Up().Get(), 0)
+	require.Len(t, i.Down().Get(), 0)
 
 	i.Delete(0)
 
