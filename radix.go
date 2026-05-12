@@ -99,12 +99,13 @@ func (n *Radix[T]) Grow(nodes int) *Radix[T] { // FIXME
 	return n
 }
 
-func (n *Radix[T]) match(prefix []byte) (bool, int, bool) {
-	if len(prefix) == 0 {
+func (n *Radix[T]) match(prefix []byte, offset uint32) (bool, int, bool) {
+	if uint32(len(prefix)) <= offset {
 		return true, 0, true
 	}
 
 	i := 0
+	prefix = prefix[offset:]
 	for i < len(n.prefix) && i < len(prefix) {
 		if n.prefix[i] != prefix[i] {
 			return false, 0, false
@@ -372,7 +373,7 @@ func (t *Iterator[T]) Next() bool {
 			prefix = t.prefixes[f.layer]
 		}
 
-		matched, consumed, end := f.n.match(prefix[f.offset:])
+		matched, consumed, end := f.n.match(prefix, f.offset)
 		if matched {
 			f.offset += uint32(consumed)
 			if end {
@@ -478,9 +479,53 @@ func (t Iterator[T]) Get() []T {
 	return t.frames[len(t.frames)-1].n.values
 }
 
-func (t Iterator[T]) Back() Iterator[T] {
+func (t Iterator[T]) Up() Iterator[T] {
 	if len(t.frames) > 0 {
-		t.frames = t.frames[:len(t.frames)-1]
+		i := len(t.frames) - 1
+		f := t.frames[i]
+		for i > 0 {
+			i--
+			p := t.frames[i]
+			if i > 0 {
+				if len(p.n.children) > 0 && p.n.children[0] != f.n && len(p.n.children[0].values) > 0 {
+					p.mode = 2
+					p.c = p.n.children[0].prefix[0] + 1
+					f.n = p.n.children[0]
+					f.offset = p.offset + uint32(len(f.n.prefix))
+					t.frames = append(t.frames[:i:i], p, f)
+					i++
+					i++
+					break
+				} else if len(p.n.values) > 0 {
+					i++
+					break
+				}
+			}
+			f = p
+		}
+		t.frames = t.frames[:i]
+	}
+	return t
+}
+
+func (t Iterator[T]) Down() Iterator[T] {
+	if len(t.frames) > 0 {
+		i := len(t.frames) - 1
+		f := &t.frames[i]
+		if f.n.next == nil && len(f.n.children) == 0 {
+			frames := make([]frame[T], i, cap(t.frames))
+			for j := i - 1; j >= 0; j-- {
+				frames[j] = t.frames[j]
+				if j > 0 && len(f.n.prefix) > 0 {
+					frames[j].c = f.n.prefix[0] + 1
+					frames[j].mode = 2
+				}
+				f = &frames[j]
+			}
+			t.frames = frames
+			t.prefixes = nil
+		}
+		t.Next()
 	}
 	return t
 }
@@ -489,17 +534,21 @@ func (t *Iterator[T]) Commit(prefixes [][]byte) {
 	for i := range t.frames {
 		f := &t.frames[i]
 		n := f.n
-		if uint32(len(prefixes[f.layer])) < f.offset {
-			continue
+		if uint16(len(prefixes)) == f.layer {
+			break
 		}
-		if uint32(len(n.prefix)) == 0 {
+		if len(n.prefix) == 0 || uint32(len(prefixes[f.layer])) < f.offset {
 			continue
 		}
 		start := f.offset - uint32(len(n.prefix))
-		if &n.prefix[0] == &t.prefixes[f.layer][start] {
+		if &n.prefix[0] == &t.prefixes[f.layer][start] && prefixes[f.layer][start] == t.prefixes[f.layer][start] {
 			n.prefix = prefixes[f.layer][start:f.offset]
 		}
 	}
+	t.prefixes = prefixes
+}
+
+func (t *Iterator[T]) Prefix(prefixes [][]byte) {
 	t.prefixes = prefixes
 }
 
@@ -560,7 +609,7 @@ func (t *Iterator[T]) merge(v int) {
 }
 
 func (n *Radix[T]) merge() {
-	if len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
+	if n.prefix != nil && len(n.values) == 0 && n.next == nil && len(n.children) == 1 {
 		c := n.children[0]
 		n.prefix = unsafe.Slice((*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(&c.prefix[0]))-uintptr(len(n.prefix)))), len(n.prefix)+len(c.prefix))
 		n.index = c.index
@@ -600,4 +649,16 @@ func (n *Radix[T]) zero() {
 
 func (n *Radix[T]) Empty() bool {
 	return n.empty()
+}
+
+func (n *Radix[T]) siblings(c *Radix[T]) (senior, junior *Radix[T]) {
+	i := n.index.num(c.prefix[0])
+	if i > 0 {
+		senior = n.children[i-1]
+	}
+	i++
+	if i < len(n.children) {
+		junior = n.children[i]
+	}
+	return
 }
